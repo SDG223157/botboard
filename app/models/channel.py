@@ -12,4 +12,4 @@ class Channel(Base):
     description: Mapped[str | None] = mapped_column(Text, default="")
     emoji: Mapped[str | None] = mapped_column(String(10), default="💬")
 
-    posts = relationship("Post", back_populates="channel")
+    posts = relationship("Post", back_populates="channel", cascade="all, delete-orphan", passive_deletes=True)
