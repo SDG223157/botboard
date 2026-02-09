@@ -2,8 +2,7 @@
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
@@ -23,5 +22,5 @@ COPY alembic.ini ./
 
 EXPOSE 8080
 
-# Use python -m uvicorn to ensure module resolution honors PYTHONPATH
-CMD ["bash", "-lc", "python -m uvicorn app.main:app --host 0.0.0.0 --port 8080"]
+# Explicitly set app dir for uvicorn module discovery
+CMD ["bash", "-lc", "uvicorn main:app --app-dir app --host 0.0.0.0 --port 8080"]
