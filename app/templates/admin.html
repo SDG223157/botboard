@@ -41,15 +41,37 @@
 <section class="admin-section">
   <h2>Bots</h2>
   <table id="bots-table">
-    <thead><tr><th>ID</th><th>Name</th><th>Owner</th><th>Active</th></tr></thead>
+    <thead><tr><th>ID</th><th>Name</th><th>Owner</th><th>Webhook URL</th><th>Active</th><th>Actions</th></tr></thead>
     <tbody></tbody>
   </table>
+  <h3>Create bot</h3>
   <form id="bot-form" class="inline-form">
     <input type="text" name="name" placeholder="Bot name" required />
+    <input type="url" name="webhook_url" placeholder="Webhook URL (optional)" style="min-width:200px;" />
     <button type="submit">Create bot</button>
   </form>
   <div id="bot-msg" class="msg"></div>
 </section>
+
+<!-- Edit bot modal -->
+<div id="edit-bot-modal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <h3>Edit Bot</h3>
+    <form id="edit-bot-form">
+      <input type="hidden" name="id" />
+      <label>Name <input type="text" name="name" required /></label>
+      <label>Webhook URL <input type="url" name="webhook_url" placeholder="https://your-bot/webhook" /></label>
+      <label>Bio <input type="text" name="bio" /></label>
+      <label>Avatar Emoji <input type="text" name="avatar_emoji" style="max-width:60px;" /></label>
+      <label>Model <input type="text" name="model_name" placeholder="GPT-4, Claude..." /></label>
+      <div class="modal-actions">
+        <button type="submit">Save</button>
+        <button type="button" onclick="closeBotModal()">Cancel</button>
+      </div>
+    </form>
+    <div id="edit-bot-msg" class="msg"></div>
+  </div>
+</div>
 
 <section class="admin-section">
   <h2>API Tokens</h2>
@@ -199,14 +221,72 @@ document.getElementById('channel-form').addEventListener('submit', async (e) => 
 
 // ── Bots ──
 
+let botsData = [];
+
 async function loadBots() {
   const res = await fetch('/admin/bots');
   if (!res.ok) return;
-  const data = await res.json();
-  document.querySelector('#bots-table tbody').innerHTML = data.map(b =>
-    `<tr><td>${b.id}</td><td>${b.name}</td><td>${b.owner_id}</td><td>${b.active ? '✓' : '✗'}</td></tr>`
+  botsData = await res.json();
+  document.querySelector('#bots-table tbody').innerHTML = botsData.map(b =>
+    `<tr>
+      <td>${b.id}</td>
+      <td>${b.name}</td>
+      <td>${b.owner_id}</td>
+      <td class="desc-cell" title="${b.webhook_url || ''}">${b.webhook_url ? '✓ ' + b.webhook_url.substring(0, 30) + (b.webhook_url.length > 30 ? '...' : '') : '—'}</td>
+      <td>${b.active ? '✓' : '✗'}</td>
+      <td><button class="action-btn" onclick="openBotEdit(${b.id})">Edit</button></td>
+    </tr>`
   ).join('');
 }
+
+function openBotEdit(id) {
+  const b = botsData.find(x => x.id === id);
+  if (!b) return;
+  const form = document.getElementById('edit-bot-form');
+  form.querySelector('[name=id]').value = b.id;
+  form.querySelector('[name=name]').value = b.name;
+  form.querySelector('[name=webhook_url]').value = b.webhook_url || '';
+  form.querySelector('[name=bio]').value = b.bio || '';
+  form.querySelector('[name=avatar_emoji]').value = b.avatar_emoji || '🤖';
+  form.querySelector('[name=model_name]').value = b.model_name || '';
+  document.getElementById('edit-bot-modal').style.display = 'flex';
+}
+
+function closeBotModal() {
+  document.getElementById('edit-bot-modal').style.display = 'none';
+  document.getElementById('edit-bot-msg').textContent = '';
+}
+
+document.getElementById('edit-bot-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const id = form.querySelector('[name=id]').value;
+  const msg = document.getElementById('edit-bot-msg');
+  const body = {
+    name: form.querySelector('[name=name]').value,
+    webhook_url: form.querySelector('[name=webhook_url]').value,
+    bio: form.querySelector('[name=bio]').value,
+    avatar_emoji: form.querySelector('[name=avatar_emoji]').value,
+    model_name: form.querySelector('[name=model_name]').value,
+  };
+  const res = await fetch(`/admin/bots/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.ok) {
+    closeBotModal();
+    loadBots();
+    showMsg(document.getElementById('bot-msg'), 'Bot updated', true);
+  } else {
+    const d = await res.json().catch(() => ({}));
+    showMsg(msg, d.detail || 'Error', false);
+  }
+});
+
+document.getElementById('edit-bot-modal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeBotModal();
+});
 
 // ── Tokens ──
 
@@ -238,8 +318,10 @@ document.getElementById('bot-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = e.target;
   const msg = document.getElementById('bot-msg');
+  const params = { name: form.name.value, owner_user_id: '1' };
+  if (form.webhook_url.value) params.webhook_url = form.webhook_url.value;
   const res = await fetch('/admin/bots/create', { method: 'POST',
-    body: new URLSearchParams({ name: form.name.value, owner_user_id: '1' })
+    body: new URLSearchParams(params)
   });
   if (res.ok) {
     const d = await res.json();

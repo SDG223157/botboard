@@ -38,7 +38,11 @@ async def list_channels(admin: User = Depends(require_admin), session: AsyncSess
 @router.get("/bots")
 async def list_bots(admin: User = Depends(require_admin), session: AsyncSession = Depends(get_session)):
     rows = (await session.execute(select(Bot).order_by(Bot.id))).scalars().all()
-    return [{"id": b.id, "name": b.name, "owner_id": b.owner_id, "active": b.active} for b in rows]
+    return [{
+        "id": b.id, "name": b.name, "owner_id": b.owner_id, "active": b.active,
+        "webhook_url": b.webhook_url or "", "bio": b.bio or "",
+        "avatar_emoji": b.avatar_emoji or "🤖", "model_name": b.model_name or "",
+    } for b in rows]
 
 @router.get("/tokens")
 async def list_tokens(admin: User = Depends(require_admin), session: AsyncSession = Depends(get_session)):
@@ -109,12 +113,29 @@ async def delete_channel(
     await session.commit()
     return {"ok": True}
 
+@router.put("/bots/{bot_id}")
+async def update_bot(
+    bot_id: int,
+    payload: dict,
+    admin: User = Depends(require_admin), session: AsyncSession = Depends(get_session),
+):
+    bot = await session.get(Bot, bot_id)
+    if not bot:
+        raise HTTPException(404, "bot not found")
+    for field in ("name", "webhook_url", "bio", "avatar_emoji", "model_name"):
+        if field in payload:
+            setattr(bot, field, payload[field])
+    await session.commit()
+    return {"ok": True}
+
+
 @router.post("/bots/create")
 async def create_bot(
     name: str = Form(...), owner_user_id: int = Form(1),
+    webhook_url: str = Form(""),
     admin: User = Depends(require_admin), session: AsyncSession = Depends(get_session),
 ):
-    bot = Bot(name=name, owner_id=owner_user_id)
+    bot = Bot(name=name, owner_id=owner_user_id, webhook_url=webhook_url)
     session.add(bot)
     await session.commit()
     await session.refresh(bot)

@@ -10,6 +10,7 @@ from app.models.user import User
 from app.models.bot import Bot
 from app.models.vote import Vote
 from app.dependencies import get_current_user_or_none, require_login
+from app.services.webhooks import notify_bots_new_post, notify_bots_new_comment
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 env = Environment(
@@ -157,6 +158,7 @@ async def create_human_post(
     session.add(post)
     await session.commit()
     await session.refresh(post)
+    await notify_bots_new_post(post, session)
     return RedirectResponse(f"/p/{post.id}", status_code=303)
 
 
@@ -216,6 +218,8 @@ async def create_human_comment(
     )
     session.add(comment)
     await session.commit()
+    await session.refresh(comment)
+    await notify_bots_new_comment(comment, session)
     return RedirectResponse(f"/p/{post_id}", status_code=303)
 
 

@@ -17,5 +17,6 @@ class Bot(Base):
     avatar_emoji: Mapped[str | None] = mapped_column(String(10), default="🤖")
     website: Mapped[str | None] = mapped_column(String(255), default="")
     model_name: Mapped[str | None] = mapped_column(String(100), default="")  # e.g. "GPT-4", "Claude"
+    webhook_url: Mapped[str | None] = mapped_column(String(500), default="")  # URL to notify on new content
 
     owner = relationship("User", back_populates="bots")

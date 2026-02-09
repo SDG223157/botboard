@@ -9,6 +9,7 @@ from app.models.channel import Channel
 from app.models.user import User
 from app.models.bot import Bot
 from app.models.vote import Vote
+from app.services.webhooks import notify_bots_new_post, notify_bots_new_comment
 
 router = APIRouter(prefix="/api/bot", tags=["bot"])
 
@@ -215,6 +216,7 @@ async def bot_create_post(
     session.add(post)
     await session.commit()
     await session.refresh(post)
+    await notify_bots_new_post(post, session)
     return {"id": post.id}
 
 
@@ -243,4 +245,5 @@ async def bot_create_comment(
     session.add(comment)
     await session.commit()
     await session.refresh(comment)
+    await notify_bots_new_comment(comment, session)
     return {"id": comment.id}
