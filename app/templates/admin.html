@@ -44,62 +44,50 @@
   th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #eee; }
   th { background: #f6f8fa; font-weight: 600; }
   .inline-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .inline-form input { padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
-  .inline-form button {
-    padding: 8px 16px; font-size: 14px; font-weight: 600;
-    background: #111; color: #fff; border: none; border-radius: 6px; cursor: pointer;
-  }
-  .inline-form button:hover { background: #333; }
+  .inline-form input { width: auto; flex: 1; min-width: 120px; }
   .msg { margin-top: 8px; font-size: 14px; }
   .msg.ok { color: #1a7a1a; }
   .msg.err { color: #b91c1c; }
   .token-cell { font-family: monospace; font-size: 12px; cursor: pointer; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .token-cell:hover { background: #fffde7; }
-  .token-new { background: #e6f9e6; }
 </style>
 
 <script>
-const TOKEN = localStorage.getItem('access_token');
-const headers = { 'Authorization': 'Bearer ' + TOKEN };
-const jsonHeaders = { ...headers, 'Content-Type': 'application/json' };
-
+// Cookie auth = automatic, no extra headers needed for same-origin
 function showMsg(el, text, ok) {
   el.textContent = text;
   el.className = 'msg ' + (ok ? 'ok' : 'err');
 }
 
-// ── Load channels ──
 async function loadChannels() {
-  const res = await fetch('/admin/channels', { headers });
+  const res = await fetch('/admin/channels');
+  if (!res.ok) return;
   const data = await res.json();
-  const tbody = document.querySelector('#channels-table tbody');
-  tbody.innerHTML = data.map(c =>
+  document.querySelector('#channels-table tbody').innerHTML = data.map(c =>
     `<tr><td>${c.id}</td><td>#${c.slug}</td><td>${c.name}</td></tr>`
   ).join('');
 }
 
-// ── Load bots ──
 async function loadBots() {
-  const res = await fetch('/admin/bots', { headers });
+  const res = await fetch('/admin/bots');
+  if (!res.ok) return;
   const data = await res.json();
-  const tbody = document.querySelector('#bots-table tbody');
-  tbody.innerHTML = data.map(b =>
+  document.querySelector('#bots-table tbody').innerHTML = data.map(b =>
     `<tr><td>${b.id}</td><td>${b.name}</td><td>${b.owner_id}</td><td>${b.active ? '✓' : '✗'}</td></tr>`
   ).join('');
 }
 
-// ── Load tokens ──
 async function loadTokens() {
-  const res = await fetch('/admin/tokens', { headers });
+  const res = await fetch('/admin/tokens');
+  if (!res.ok) return;
   const data = await res.json();
-  const tbody = document.querySelector('#tokens-table tbody');
-  tbody.innerHTML = data.map(t =>
+  document.querySelector('#tokens-table tbody').innerHTML = data.map(t =>
     `<tr>
       <td>${t.id}</td>
       <td>${t.bot_name}</td>
       <td>${t.name}</td>
       <td class="token-cell" title="Click to copy" onclick="copyToken(this)">${t.token_hash}</td>
-      <td>${new Date(t.created_at).toLocaleDateString()}</td>
+      <td>${t.created_at ? new Date(t.created_at).toLocaleDateString() : ''}</td>
     </tr>`
   ).join('');
 }
@@ -111,46 +99,29 @@ function copyToken(el) {
   setTimeout(() => el.textContent = orig, 1500);
 }
 
-// ── Create channel ──
 document.getElementById('channel-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = e.target;
   const msg = document.getElementById('channel-msg');
-  const body = new FormData(form);
-  const res = await fetch('/admin/channels/create', { method: 'POST', headers, body });
-  if (res.ok) {
-    showMsg(msg, 'Channel created', true);
-    form.reset();
-    loadChannels();
-  } else {
-    const d = await res.json().catch(() => ({}));
-    showMsg(msg, d.detail || 'Error', false);
-  }
+  const res = await fetch('/admin/channels/create', { method: 'POST', body: new FormData(form) });
+  if (res.ok) { showMsg(msg, 'Channel created', true); form.reset(); loadChannels(); }
+  else { const d = await res.json().catch(() => ({})); showMsg(msg, d.detail || 'Error', false); }
 });
 
-// ── Create bot ──
 document.getElementById('bot-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = e.target;
   const msg = document.getElementById('bot-msg');
-  const res = await fetch('/admin/bots/create', { method: 'POST', headers,
+  const res = await fetch('/admin/bots/create', { method: 'POST',
     body: new URLSearchParams({ name: form.name.value, owner_user_id: '1' })
   });
   if (res.ok) {
     const d = await res.json();
-    showMsg(msg, `Bot created (id=${d.bot_id}). Token saved — see table below.`, true);
-    form.reset();
-    loadBots();
-    loadTokens();
-  } else {
-    const d = await res.json().catch(() => ({}));
-    showMsg(msg, d.detail || 'Error', false);
-  }
+    showMsg(msg, `Bot created (id=${d.bot_id}). Token saved below.`, true);
+    form.reset(); loadBots(); loadTokens();
+  } else { const d = await res.json().catch(() => ({})); showMsg(msg, d.detail || 'Error', false); }
 });
 
-// ── Init ──
-loadChannels();
-loadBots();
-loadTokens();
+loadChannels(); loadBots(); loadTokens();
 </script>
 {% endblock %}

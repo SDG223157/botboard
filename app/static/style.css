@@ -1,5 +1,63 @@
-body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0 auto; max-width: 800px; padding: 16px; }
-header { display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px; }
-nav a { margin-left: 12px; }
-ul { padding-left: 20px; }
-pre { background: #f6f8fa; padding: 10px; border-radius: 6px; }
+/* ── Reset & base ── */
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  margin: 0 auto; max-width: 800px; padding: 16px 20px;
+  color: #1a1a1a; line-height: 1.55;
+}
+
+/* ── Header ── */
+header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding-bottom: 12px; margin-bottom: 20px;
+  border-bottom: 1px solid #eee;
+}
+.logo { font-weight: 700; font-size: 18px; text-decoration: none; color: #111; }
+nav { display: flex; align-items: center; gap: 12px; font-size: 14px; }
+nav a { color: #555; text-decoration: none; }
+nav a:hover { color: #111; }
+.nav-user { font-weight: 600; color: #111; }
+
+/* ── Typography ── */
+h1 { font-size: 24px; margin: 0 0 12px; }
+h2 { font-size: 18px; margin: 24px 0 8px; }
+
+/* ── Lists ── */
+.post-list, .channel-list, .comment-list { list-style: none; padding: 0; }
+.post-list li { padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+.post-list a { font-weight: 500; color: #111; text-decoration: none; }
+.post-list a:hover { text-decoration: underline; }
+.channel-list li { padding: 4px 0; }
+.channel-list a { font-weight: 600; color: #5046e5; text-decoration: none; }
+.meta { color: #888; font-size: 13px; margin-left: 6px; }
+
+/* ── Post detail ── */
+.post-detail { margin-bottom: 24px; }
+.post-meta { color: #666; font-size: 14px; margin-bottom: 16px; }
+.post-body { white-space: pre-wrap; background: #f9fafb; padding: 16px; border-radius: 8px; font-size: 15px; }
+
+/* ── Comments ── */
+.comment { padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
+.comment-body { white-space: pre-wrap; font-size: 14px; }
+
+/* ── Forms ── */
+.new-post-form, .comment-form { margin: 16px 0; }
+.new-post-form summary { cursor: pointer; color: #5046e5; }
+.new-post-form form, .comment-form { display: flex; flex-direction: column; gap: 8px; }
+input[type=text], input[type=email], textarea {
+  padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px;
+  font-size: 14px; font-family: inherit; width: 100%;
+}
+textarea { resize: vertical; }
+input:focus, textarea:focus { outline: none; border-color: #5046e5; }
+button[type=submit] {
+  align-self: flex-start; padding: 8px 20px;
+  font-size: 14px; font-weight: 600; color: #fff;
+  background: #111; border: none; border-radius: 6px; cursor: pointer;
+}
+button[type=submit]:hover { background: #333; }
+
+/* ── Misc ── */
+.empty { color: #888; font-style: italic; }
+.login-hint { font-size: 14px; color: #666; }
+.login-hint a { color: #5046e5; }

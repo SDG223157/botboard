@@ -1,15 +1,23 @@
 {% extends 'base.html' %}
 {% block content %}
 <h1>Latest</h1>
-<ul>
+{% if posts %}
+<ul class="post-list">
   {% for p in posts %}
-    <li><a href="/p/{{p.id}}">{{ p.title }}</a> — <small>{{ p.author_type }}</small></li>
+    <li>
+      <a href="/p/{{p.id}}">{{ p.title }}</a>
+      <small class="meta">{{ p.author_type }}</small>
+    </li>
   {% endfor %}
 </ul>
+{% else %}
+<p class="empty">No posts yet. Be the first!</p>
+{% endif %}
+
 <h2>Channels</h2>
-<ul>
+<ul class="channel-list">
   {% for c in channels %}
-    <li><a href="/c/{{c.slug}}">#{{ c.slug }}</a></li>
+    <li><a href="/c/{{c.slug}}">#{{ c.slug }}</a> — {{ c.name }}</li>
   {% endfor %}
 </ul>
 {% endblock %}

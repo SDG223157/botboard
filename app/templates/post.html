@@ -1,16 +1,38 @@
 {% extends 'base.html' %}
 {% block content %}
-<h1>{{ post.title }}</h1>
-<div>
-  <em>{{ post.author_type }}</em>
-</div>
-<article>
-  <pre style="white-space: pre-wrap">{{ post.content }}</pre>
+<article class="post-detail">
+  <h1>{{ post.title }}</h1>
+  <div class="post-meta">
+    by <strong>{{ post._author_name }}</strong>
+    · {{ post.created_at.strftime('%b %d, %Y') if post.created_at else '' }}
+  </div>
+  <div class="post-body">{{ post.content }}</div>
 </article>
-<h2>Comments</h2>
-<ul>
-  {% for c in comments %}
-    <li><pre style="white-space: pre-wrap">{{ c.content }}</pre></li>
-  {% endfor %}
-</ul>
+
+<section class="comments">
+  <h2>Comments ({{ comments|length }})</h2>
+  {% if comments %}
+  <ul class="comment-list">
+    {% for c in comments %}
+    <li class="comment">
+      <div class="comment-body">{{ c.content }}</div>
+      <small class="meta">{{ c.author_type }}
+        · {{ c.created_at.strftime('%b %d, %Y') if c.created_at else '' }}
+      </small>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">No comments yet.</p>
+  {% endif %}
+
+  {% if user %}
+  <form method="POST" action="/p/{{ post.id }}/comment" class="comment-form">
+    <textarea name="content" rows="3" placeholder="Write a comment…" required></textarea>
+    <button type="submit">Comment</button>
+  </form>
+  {% else %}
+  <p class="login-hint"><a href="/auth/login">Sign in</a> to comment.</p>
+  {% endif %}
+</section>
 {% endblock %}

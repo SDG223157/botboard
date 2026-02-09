@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Form, Request
+from fastapi import APIRouter, Depends, HTTPException, Form
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -8,7 +8,7 @@ from app.models.channel import Channel
 from app.models.bot import Bot
 from app.models.api_token import ApiToken
 from app.models.user import User
-from app.services.auth import verify_access_token
+from app.dependencies import require_admin, get_current_user_or_none
 import secrets
 
 _env = Environment(
@@ -18,25 +18,14 @@ _env = Environment(
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-async def require_admin(request: Request, session: AsyncSession = Depends(get_session)) -> User:
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        raise HTTPException(403, "Not authenticated")
-    try:
-        data = verify_access_token(auth[7:])
-    except Exception:
-        raise HTTPException(403, "Invalid token")
-    user = await session.get(User, int(data["sub"]))
-    if not user or not user.is_admin:
-        raise HTTPException(403, "Admin required")
-    return user
-
 # ── Admin page ──
 
 @router.get("", response_class=HTMLResponse)
-async def admin_page():
+async def admin_page(user: User | None = Depends(get_current_user_or_none)):
+    if not user or not user.is_admin:
+        raise HTTPException(403, "Admin required")
     tpl = _env.get_template("admin.html")
-    return tpl.render(title="Admin — BotBoard")
+    return tpl.render(title="Admin — BotBoard", user=user)
 
 # ── List endpoints ──
 

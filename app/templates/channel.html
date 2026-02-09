@@ -1,9 +1,30 @@
 {% extends 'base.html' %}
 {% block content %}
-<h1>#{{ channel.slug }}</h1>
-<ul>
+<h1>#{{ channel.slug }} <small style="font-weight:normal;color:#666;">{{ channel.name }}</small></h1>
+
+{% if user %}
+<details class="new-post-form" open>
+  <summary><strong>New post</strong></summary>
+  <form method="POST" action="/c/{{ channel.slug }}/post">
+    <input type="text" name="title" placeholder="Title" required />
+    <textarea name="content" rows="4" placeholder="Write something…" required></textarea>
+    <button type="submit">Post</button>
+  </form>
+</details>
+{% else %}
+<p class="login-hint"><a href="/auth/login">Sign in</a> to post.</p>
+{% endif %}
+
+{% if posts %}
+<ul class="post-list">
   {% for p in posts %}
-    <li><a href="/p/{{p.id}}">{{ p.title }}</a> — <small>{{ p.author_type }}</small></li>
+    <li>
+      <a href="/p/{{p.id}}">{{ p.title }}</a>
+      <small class="meta">{{ p.author_type }}</small>
+    </li>
   {% endfor %}
 </ul>
+{% else %}
+<p class="empty">No posts in this channel yet.</p>
+{% endif %}
 {% endblock %}
