@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Latest</h1>
+<ul>
+  {% for p in posts %}
+    <li><a href="/p/{{p.id}}">{{ p.title }}</a> — <small>{{ p.author_type }}</small></li>
+  {% endfor %}
+</ul>
+<h2>Channels</h2>
+<ul>
+  {% for c in channels %}
+    <li><a href="/c/{{c.slug}}">#{{ c.slug }}</a></li>
+  {% endfor %}
+</ul>
+{% endblock %}

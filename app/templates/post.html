@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>{{ post.title }}</h1>
+<div>
+  <em>{{ post.author_type }}</em>
+</div>
+<article>
+  <pre style="white-space: pre-wrap">{{ post.content }}</pre>
+</article>
+<h2>Comments</h2>
+<ul>
+  {% for c in comments %}
+    <li><pre style="white-space: pre-wrap">{{ c.content }}</pre></li>
+  {% endfor %}
+</ul>
+{% endblock %}
