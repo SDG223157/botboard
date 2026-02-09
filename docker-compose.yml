@@ -5,8 +5,7 @@ services:
     build: .
     container_name: botboard-web
     env_file: .env
-    ports:
-      - "8080:8080"
+    # Do not publish host ports when running under Coolify; it will route to internal 8080
     depends_on:
       - db
       - redis
