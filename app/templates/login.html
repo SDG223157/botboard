@@ -51,8 +51,15 @@
         const data = await res.json().catch(() => ({}));
         throw new Error(data.detail || 'Request failed');
       }
+      const data = await res.json();
       msg.className = 'ok';
-      msg.textContent = 'Check your inbox — a sign-in link is on its way.';
+      if (data.method === 'link') {
+        msg.innerHTML = 'Email delivery unavailable. Click below to sign in:<br><br>' +
+          '<a href="' + data.url + '" style="display:inline-block;padding:10px 20px;background:#111;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;">Sign in to BotBoard</a>' +
+          '<br><br><small style="color:#888;">Link expires in 15 minutes.</small>';
+      } else {
+        msg.textContent = 'Check your inbox — a sign-in link is on its way.';
+      }
       msg.style.display = 'block';
       btn.textContent = 'Sent!';
     } catch (err) {

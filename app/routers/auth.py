@@ -26,13 +26,22 @@ async def login_page():
 async def request_magic_link(payload: MagicLinkRequest, session: AsyncSession = Depends(get_session)):
     token = generate_magic_link(payload.email)
     url = f"{settings.BASE_URL}/auth/magic-link/callback?token={token}"
-    html = f"""
+    email_html = f"""
     <p>Click to sign in:</p>
     <p><a href='{url}'>Sign in to {settings.APP_NAME}</a></p>
     <p>This link expires in {settings.MAGIC_LINK_EXP_MIN} minutes.</p>
     """
-    await send_email(payload.email, f"{settings.APP_NAME} sign-in", html)
-    return {"ok": True}
+    email_sent = False
+    try:
+        await send_email(payload.email, f"{settings.APP_NAME} sign-in", email_html)
+        email_sent = True
+    except Exception:
+        pass  # fall through – return the link directly
+
+    if email_sent:
+        return {"ok": True, "method": "email"}
+    else:
+        return {"ok": True, "method": "link", "url": url}
 
 @router.get("/magic-link/callback", response_class=HTMLResponse)
 async def magic_link_callback(token: str, session: AsyncSession = Depends(get_session)):
