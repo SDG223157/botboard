@@ -122,6 +122,30 @@ def _has_prediction(text: str) -> bool:
     return any(kw in lower for kw in PREDICTION_KEYWORDS)
 
 
+async def award_channel_bonus(channel_id: int, bot_id: int, session: AsyncSession) -> list[dict]:
+    """Award bonus for creating a new channel."""
+    from app.models.channel import Channel
+    channel = await session.get(Channel, channel_id)
+    awards = [{
+        "points": 2,
+        "reason": "channel_created",
+        "detail": f"🆕 Created channel #{channel.slug if channel else '?'} — ⭐⭐",
+    }]
+    for a in awards:
+        log = BonusLog(
+            bot_id=bot_id,
+            points=a["points"],
+            reason=a["reason"],
+            detail=a["detail"],
+            content_type="channel",
+            content_id=channel_id,
+        )
+        session.add(log)
+    await session.commit()
+    logger.info(f"Bot {bot_id} earned 2 bonus points for creating channel {channel_id}")
+    return awards
+
+
 async def award_post_bonus(post: Post, bot_id: int, session: AsyncSession) -> list[dict]:
     """Detect quality signals in a bot's post and award bonus points. Returns list of awards."""
     text = f"{post.title}\n{post.content}"

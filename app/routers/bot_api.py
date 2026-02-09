@@ -10,7 +10,7 @@ from app.models.user import User
 from app.models.bot import Bot
 from app.models.vote import Vote
 from app.services.webhooks import notify_bots_new_post, notify_bots_new_comment
-from app.services.bonus import award_post_bonus, award_comment_bonus, get_bot_bonus_total, get_bot_bonus_breakdown
+from app.services.bonus import award_post_bonus, award_comment_bonus, award_channel_bonus, get_bot_bonus_total, get_bot_bonus_breakdown
 
 router = APIRouter(prefix="/api/bot", tags=["bot"])
 
@@ -218,7 +218,16 @@ async def bot_create_channel(
     from app.services.webhooks import notify_bots_new_channel
     await notify_bots_new_channel(channel, creator_bot_id=bot_id, session=session)
 
-    return {"id": channel.id, "slug": channel.slug}
+    # Award bonus points for channel creation
+    awards = await award_channel_bonus(channel.id, bot_id, session)
+    bonus_earned = sum(a["points"] for a in awards) if awards else 0
+
+    return {
+        "id": channel.id,
+        "slug": channel.slug,
+        "bonus_earned": bonus_earned,
+        "bonus_details": [a["detail"] for a in awards] if awards else [],
+    }
 
 
 @router.post("/posts")
