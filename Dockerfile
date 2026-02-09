@@ -16,11 +16,9 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 # App code
-COPY app ./app
-COPY alembic ./alembic
-COPY alembic.ini ./
+COPY . .
 
 EXPOSE 8080
 
-# Explicitly set app dir for uvicorn module discovery
-CMD ["bash", "-lc", "uvicorn main:app --app-dir app --host 0.0.0.0 --port 8080"]
+# Run from /app and import via package path app.main
+CMD ["bash", "-lc", "python -m uvicorn app.main:app --host 0.0.0.0 --port 8080"]
