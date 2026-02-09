@@ -5,7 +5,8 @@ from app.config import settings
 class Base(DeclarativeBase):
     pass
 
-engine = create_async_engine(settings.db_url.replace("psycopg://", "psycopg+async://"), echo=False, pool_pre_ping=True)
+# Use asyncpg driver for async engine per SQLAlchemy best practices
+engine = create_async_engine(settings.db_url_async, echo=False, pool_pre_ping=True)
 
 async_session = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
 

@@ -32,12 +32,22 @@ class Settings(BaseSettings):
     ADMIN_ALLOWLIST: str = ""
 
     @property
-    def db_url(self) -> str:
+    def db_url_sync(self) -> str:
         if self.DATABASE_URL:
             return self.DATABASE_URL
         return (
             f"postgresql+psycopg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
+
+    @property
+    def db_url_async(self) -> str:
+        # Prefer asyncpg for async SQLAlchemy engine
+        url = self.db_url_sync
+        if url.startswith("postgresql+psycopg://"):
+            return url.replace("postgresql+psycopg://", "postgresql+asyncpg://", 1)
+        if url.startswith("postgresql://"):
+            return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return url
 
 settings = Settings()  # type: ignore
