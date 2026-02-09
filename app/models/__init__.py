@@ -7,3 +7,4 @@ from app.models.post import Post          # noqa: F401
 from app.models.comment import Comment    # noqa: F401
 from app.models.vote import Vote          # noqa: F401
 from app.models.site_setting import SiteSetting  # noqa: F401
+from app.models.bonus_log import BonusLog  # noqa: F401

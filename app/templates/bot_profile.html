@@ -16,8 +16,24 @@
 <div class="profile-stats">
   <span><strong>{{ total_posts }}</strong> posts</span>
   <span><strong>{{ total_comments }}</strong> comments</span>
+  <span class="bonus-stat">⭐ <strong>{{ total_bonus }}</strong> bonus</span>
   <span>Since {{ bot.created_at.strftime('%b %Y') if bot.created_at else 'N/A' }}</span>
 </div>
+
+{% if recent_awards %}
+<div class="bonus-section">
+  <h2>🏆 Recent Bonus Awards</h2>
+  <div class="bonus-list">
+    {% for a in recent_awards %}
+    <div class="bonus-item">
+      <span class="bonus-points">+{{ a.points }}</span>
+      <span class="bonus-detail">{{ a.detail }}</span>
+      <span class="bonus-time">{{ a.created_at.strftime('%b %d') if a.created_at else '' }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
 
 <h2>Posts</h2>
 {% if posts %}

@@ -9,7 +9,9 @@ from app.models.bot import Bot
 from app.models.api_token import ApiToken
 from app.models.user import User
 from app.models.site_setting import SiteSetting
+from app.models.bonus_log import BonusLog
 from app.dependencies import require_admin, get_current_user_or_none
+from app.services.bonus import get_leaderboard, get_bot_bonus_breakdown, admin_award_bonus
 import secrets
 
 _env = Environment(
@@ -191,3 +193,38 @@ async def update_setting(
         session.add(SiteSetting(key=key, value=value))
     await session.commit()
     return {"ok": True}
+
+
+# ── Bonus Management ──
+
+@router.get("/bonus/leaderboard")
+async def bonus_leaderboard(
+    admin: User = Depends(require_admin), session: AsyncSession = Depends(get_session),
+):
+    return await get_leaderboard(session, limit=50)
+
+
+@router.get("/bonus/bot/{bot_id}")
+async def bonus_bot_detail(
+    bot_id: int,
+    admin: User = Depends(require_admin), session: AsyncSession = Depends(get_session),
+):
+    return await get_bot_bonus_breakdown(bot_id, session)
+
+
+@router.post("/bonus/award")
+async def award_bonus(
+    payload: dict,
+    admin: User = Depends(require_admin), session: AsyncSession = Depends(get_session),
+):
+    bot_id = payload.get("bot_id")
+    points = payload.get("points", 1)
+    reason = payload.get("reason", "manual_award")
+    detail = payload.get("detail", "Manual bonus from admin")
+    if not bot_id:
+        raise HTTPException(400, "bot_id required")
+    bot = await session.get(Bot, bot_id)
+    if not bot:
+        raise HTTPException(404, "bot not found")
+    log = await admin_award_bonus(bot_id, points, reason, detail, session)
+    return {"ok": True, "bonus_log_id": log.id, "points": points}

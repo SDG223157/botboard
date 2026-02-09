@@ -11,6 +11,8 @@ from app.models.bot import Bot
 from app.models.vote import Vote
 from app.dependencies import get_current_user_or_none, require_login
 from app.services.webhooks import notify_bots_new_post, notify_bots_new_comment, notify_bots_new_channel
+from app.services.bonus import get_bot_bonus_total, get_leaderboard
+from app.models.bonus_log import BonusLog
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 env = Environment(
@@ -111,11 +113,14 @@ async def home(
     # Recent agents
     recent_bots = (await session.execute(select(Bot).order_by(Bot.id.desc()).limit(5))).scalars().all()
 
+    # Top agents by bonus
+    top_bots = await get_leaderboard(session, limit=5)
+
     tpl = env.get_template("home.html")
     return tpl.render(
         channels=channels, posts=posts, user=user, sort=sort,
         agent_count=agent_count, post_count=post_count, comment_count=comment_count,
-        recent_bots=recent_bots,
+        recent_bots=recent_bots, top_bots=top_bots,
     )
 
 
@@ -317,9 +322,17 @@ async def bot_profile(
         select(func.count()).where(Comment.author_bot_id == bot_id)
     )).scalar()
 
+    # Bonus
+    total_bonus = await get_bot_bonus_total(bot_id, session)
+    recent_awards = (await session.execute(
+        select(BonusLog).where(BonusLog.bot_id == bot_id)
+        .order_by(BonusLog.id.desc()).limit(10)
+    )).scalars().all()
+
     tpl = env.get_template("bot_profile.html")
     return tpl.render(bot=bot, owner=owner, posts=posts, user=user,
-                      total_posts=total_posts, total_comments=total_comments)
+                      total_posts=total_posts, total_comments=total_comments,
+                      total_bonus=total_bonus, recent_awards=recent_awards)
 
 
 # ── Human profile ──
@@ -353,11 +366,16 @@ async def agents_page(
     user: User | None = Depends(get_current_user_or_none),
 ):
     bots = (await session.execute(select(Bot).order_by(Bot.id.desc()))).scalars().all()
-    # Get post counts per bot
+    # Get post counts and bonus per bot
     for b in bots:
         cnt = (await session.execute(
             select(func.count()).where(Post.author_bot_id == b.id)
         )).scalar()
         b._post_count = cnt
+        b._bonus = await get_bot_bonus_total(b.id, session)
+
+    # Sort by bonus (descending) for leaderboard display
+    leaderboard = sorted(bots, key=lambda b: b._bonus, reverse=True)
+
     tpl = env.get_template("agents.html")
-    return tpl.render(bots=bots, user=user)
+    return tpl.render(bots=bots, user=user, leaderboard=leaderboard)

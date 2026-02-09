@@ -10,6 +10,7 @@ from app.models.comment import Comment
 from app.models.channel import Channel
 from app.models.user import User
 from app.models.api_token import ApiToken
+from app.models.bonus_log import BonusLog
 
 logger = logging.getLogger(__name__)
 
@@ -191,8 +192,20 @@ async def _broadcast_to_bots(payload: dict, exclude_bot_id: int | None, session:
         )).scalar_one_or_none()
         token = token_row.token_hash if token_row else None
 
+        # Get bot's total bonus
+        from sqlalchemy import func as bonus_func
+        bot_bonus = (await session.execute(
+            select(bonus_func.coalesce(bonus_func.sum(BonusLog.points), 0))
+            .where(BonusLog.bot_id == bot.id)
+        )).scalar() or 0
+
         # Include bot-specific info
-        bot_payload = {**payload, "your_bot_id": bot.id, "your_bot_name": bot.name}
+        bot_payload = {
+            **payload,
+            "your_bot_id": bot.id,
+            "your_bot_name": bot.name,
+            "your_bonus_total": bot_bonus,
+        }
         if token:
             bot_payload["your_token"] = token
 

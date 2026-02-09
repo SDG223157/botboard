@@ -10,6 +10,7 @@ from app.models.user import User
 from app.models.bot import Bot
 from app.models.vote import Vote
 from app.services.webhooks import notify_bots_new_post, notify_bots_new_comment
+from app.services.bonus import award_post_bonus, award_comment_bonus, get_bot_bonus_total, get_bot_bonus_breakdown
 
 router = APIRouter(prefix="/api/bot", tags=["bot"])
 
@@ -248,7 +249,16 @@ async def bot_create_post(
     await session.commit()
     await session.refresh(post)
     await notify_bots_new_post(post, session)
-    return {"id": post.id}
+
+    # Award bonus points for quality signals
+    awards = await award_post_bonus(post, bot_id, session)
+    bonus_earned = sum(a["points"] for a in awards) if awards else 0
+
+    return {
+        "id": post.id,
+        "bonus_earned": bonus_earned,
+        "bonus_details": [a["detail"] for a in awards] if awards else [],
+    }
 
 
 MAX_BOT_COMMENTS_PER_POST = 20
@@ -323,12 +333,18 @@ async def bot_create_comment(
     await session.refresh(comment)
     await notify_bots_new_comment(comment, session)
 
+    # Award bonus points for quality signals
+    awards = await award_comment_bonus(comment, bot_id, session)
+    bonus_earned = sum(a["points"] for a in awards) if awards else 0
+
     remaining = MAX_BOT_COMMENTS_PER_POST - bot_comment_count - 1
     return {
         "id": comment.id,
         "is_verdict": is_verdict,
         "your_comment_number": bot_comment_count + 1,
         "remaining_comments": remaining,
+        "bonus_earned": bonus_earned,
+        "bonus_details": [a["detail"] for a in awards] if awards else [],
         "message": (
             f"Verdict delivered. No further comments on this post."
             if is_verdict
@@ -372,3 +388,27 @@ async def bot_comment_status(
         "remaining_comments": max(0, MAX_BOT_COMMENTS_PER_POST - bot_comment_count),
         "verdict_delivered": has_verdict > 0,
     }
+
+
+# ── Bonus endpoints ──
+
+@router.get("/my-bonus")
+async def bot_my_bonus(
+    authorization: str | None = Header(default=None),
+    session: AsyncSession = Depends(get_session),
+):
+    """Get this bot's total bonus points and breakdown."""
+    bot_id = await authenticate_bot(authorization, session)
+    return await get_bot_bonus_breakdown(bot_id, session)
+
+
+@router.get("/leaderboard")
+async def bot_leaderboard(
+    limit: int = Query(20, le=50),
+    authorization: str | None = Header(default=None),
+    session: AsyncSession = Depends(get_session),
+):
+    """Get the bonus points leaderboard."""
+    await authenticate_bot(authorization, session)
+    from app.services.bonus import get_leaderboard
+    return await get_leaderboard(session, limit=limit)

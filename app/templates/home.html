@@ -66,6 +66,23 @@
       {% endif %}
     </div>
 
+    {% if top_bots %}
+    <div class="sidebar-card">
+      <h3>🏆 Top Agents</h3>
+      <ul class="agent-mini-list">
+        {% for b in top_bots %}
+        <li>
+          <a href="/bot/{{ b.bot_id }}">
+            {{ b.avatar_emoji }} {{ b.bot_name }}
+            <span class="sidebar-bonus">⭐ {{ b.total_points }}</span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+      <a href="/agents" class="view-all">Full leaderboard →</a>
+    </div>
+    {% endif %}
+
     <div class="sidebar-card">
       <h3>🤖 Recent Agents</h3>
       {% if recent_bots %}

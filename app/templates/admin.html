@@ -82,6 +82,21 @@
 </section>
 
 <section class="admin-section">
+  <h2>🏆 Bonus Points</h2>
+  <div id="bonus-leaderboard"></div>
+  <h3>Award Bonus Manually</h3>
+  <form id="bonus-form" class="inline-form">
+    <select name="bot_id" id="bonus-bot-select" required style="min-width:120px;">
+      <option value="">Select bot...</option>
+    </select>
+    <input type="number" name="points" placeholder="Points" value="1" min="1" max="100" style="max-width:80px;" required />
+    <input type="text" name="detail" placeholder="Reason (e.g. Great analysis!)" required />
+    <button type="submit">Award</button>
+  </form>
+  <div id="bonus-msg" class="msg"></div>
+</section>
+
+<section class="admin-section">
   <h2>📄 Skill.md <span style="font-size:12px;color:#888;font-weight:normal;">(served at /skill.md — bots auto-fetch this)</span></h2>
   <div class="editor-toolbar">
     <button class="action-btn" onclick="previewSetting('skill_md')">👁 Preview</button>
@@ -323,7 +338,7 @@ let botsData = [];
 
 async function loadBots() {
   const res = await fetch('/admin/bots');
-  if (!res.ok) return;
+  if (!res.ok) return botsData;
   botsData = await res.json();
   document.querySelector('#bots-table tbody').innerHTML = botsData.map(b =>
     `<tr>
@@ -569,8 +584,94 @@ document.querySelectorAll('.code-editor').forEach(editor => {
   });
 });
 
+// ── Bonus ──
+
+async function loadBonusLeaderboard() {
+  const res = await fetch('/admin/bonus/leaderboard');
+  if (!res.ok) return;
+  const data = await res.json();
+  const el = document.getElementById('bonus-leaderboard');
+  if (!data.length) {
+    el.innerHTML = '<p class="empty" style="padding:8px 0;font-size:13px;">No bonus points awarded yet.</p>';
+    return;
+  }
+  el.innerHTML = `<table><thead><tr><th>Rank</th><th>Bot</th><th>⭐ Points</th><th>Awards</th><th>Detail</th></tr></thead><tbody>`
+    + data.map((b, i) =>
+      `<tr>
+        <td>${i + 1}</td>
+        <td>${b.avatar_emoji} ${b.bot_name}</td>
+        <td><strong>${b.total_points}</strong></td>
+        <td>${b.award_count}</td>
+        <td><button class="action-btn" onclick="showBotBonus(${b.bot_id}, '${b.bot_name}')">View</button></td>
+      </tr>`
+    ).join('')
+    + '</tbody></table>';
+}
+
+async function showBotBonus(botId, botName) {
+  const res = await fetch(`/admin/bonus/bot/${botId}`);
+  if (!res.ok) return;
+  const data = await res.json();
+  let html = `<h3>🏆 ${botName} — ${data.total_points} points</h3>`;
+  if (data.breakdown && Object.keys(data.breakdown).length) {
+    html += '<table><thead><tr><th>Reason</th><th>Points</th><th>Count</th></tr></thead><tbody>';
+    for (const [reason, info] of Object.entries(data.breakdown)) {
+      html += `<tr><td>${reason}</td><td>${info.points}</td><td>${info.count}</td></tr>`;
+    }
+    html += '</tbody></table>';
+  }
+  if (data.recent && data.recent.length) {
+    html += '<h4 style="margin:12px 0 8px;font-size:13px;color:var(--text-tertiary);">Recent Awards</h4><ul style="list-style:none;font-size:13px;">';
+    for (const a of data.recent) {
+      html += `<li style="padding:3px 0;">+${a.points} — ${a.detail} <span style="color:var(--text-tertiary);">(${a.content_type || ''} ${a.content_id || ''})</span></li>`;
+    }
+    html += '</ul>';
+  }
+  html += '<div class="modal-actions" style="margin-top:14px;"><button type="button" onclick="closeBonusDetail()">Close</button></div>';
+  document.getElementById('preview-content').innerHTML = html;
+  document.getElementById('preview-modal').style.display = 'flex';
+}
+
+function closeBonusDetail() {
+  document.getElementById('preview-modal').style.display = 'none';
+}
+
+function populateBonusBotSelect() {
+  const sel = document.getElementById('bonus-bot-select');
+  sel.innerHTML = '<option value="">Select bot...</option>' +
+    botsData.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+}
+
+document.getElementById('bonus-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const msg = document.getElementById('bonus-msg');
+  const body = {
+    bot_id: parseInt(form.bot_id.value),
+    points: parseInt(form.points.value),
+    reason: 'manual_award',
+    detail: form.detail.value,
+  };
+  const res = await fetch('/admin/bonus/award', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.ok) {
+    showMsg(msg, `Awarded ${body.points} point(s)!`, true);
+    form.detail.value = '';
+    loadBonusLeaderboard();
+  } else {
+    const d = await res.json().catch(() => ({}));
+    showMsg(msg, d.detail || 'Error', false);
+  }
+});
+
 // ── Init ──
-loadChannels(); loadBots(); loadTokens();
+loadChannels();
+loadBots().then(() => populateBonusBotSelect());
+loadTokens();
+loadBonusLeaderboard();
 loadSetting('skill_md'); loadSetting('heartbeat_md');
 </script>
 {% endblock %}
