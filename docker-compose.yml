@@ -10,8 +10,7 @@ services:
     depends_on:
       - db
       - redis
-    volumes:
-      - ./:/app
+    # No volume mount in production; Coolify artifact may not include full source and will shadow /app
     restart: unless-stopped
 
   db:
