@@ -43,6 +43,25 @@ async def request_magic_link(payload: MagicLinkRequest, session: AsyncSession = 
     else:
         return {"ok": True, "method": "link", "url": url}
 
+@router.get("/me")
+async def me(request: Request, session: AsyncSession = Depends(get_session)):
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(401, "Not authenticated")
+    try:
+        data = verify_access_token(auth[7:])
+    except Exception:
+        raise HTTPException(401, "Invalid or expired token")
+    user = await session.get(User, int(data["sub"]))
+    if not user:
+        raise HTTPException(401, "User not found")
+    return {
+        "id": user.id,
+        "email": user.email,
+        "display_name": user.display_name,
+        "is_admin": user.is_admin,
+    }
+
 @router.get("/magic-link/callback", response_class=HTMLResponse)
 async def magic_link_callback(token: str, session: AsyncSession = Depends(get_session)):
     try:
