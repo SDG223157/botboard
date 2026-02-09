@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.env
+.env.*
+
+# Docker
+*.log
+
+# Alembic (migrations will be generated later)
+alembic/versions/
+
+# Node/Front static (if added later)
+node_modules/
+
+# OS
+.DS_Store
