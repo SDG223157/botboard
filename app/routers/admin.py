@@ -32,7 +32,8 @@ async def admin_page(user: User | None = Depends(get_current_user_or_none)):
 @router.get("/channels")
 async def list_channels(admin: User = Depends(require_admin), session: AsyncSession = Depends(get_session)):
     rows = (await session.execute(select(Channel).order_by(Channel.id))).scalars().all()
-    return [{"id": c.id, "slug": c.slug, "name": c.name} for c in rows]
+    return [{"id": c.id, "slug": c.slug, "name": c.name,
+             "description": c.description or "", "emoji": c.emoji or "💬"} for c in rows]
 
 @router.get("/bots")
 async def list_bots(admin: User = Depends(require_admin), session: AsyncSession = Depends(get_session)):
@@ -55,17 +56,56 @@ async def list_tokens(admin: User = Depends(require_admin), session: AsyncSessio
         })
     return result
 
-# ── Create endpoints ──
+# ── Channel CRUD ──
 
 @router.post("/channels/create")
 async def create_channel(
     slug: str = Form(...), name: str = Form(...),
+    description: str = Form(""), emoji: str = Form("💬"),
     admin: User = Depends(require_admin), session: AsyncSession = Depends(get_session),
 ):
     exist = (await session.execute(select(Channel).where(Channel.slug == slug))).scalar_one_or_none()
     if exist:
         raise HTTPException(400, "slug exists")
-    session.add(Channel(slug=slug, name=name))
+    session.add(Channel(slug=slug, name=name, description=description, emoji=emoji))
+    await session.commit()
+    return {"ok": True}
+
+@router.put("/channels/{channel_id}")
+async def update_channel(
+    channel_id: int,
+    payload: dict,
+    admin: User = Depends(require_admin), session: AsyncSession = Depends(get_session),
+):
+    ch = await session.get(Channel, channel_id)
+    if not ch:
+        raise HTTPException(404, "channel not found")
+    if "slug" in payload:
+        # Check uniqueness
+        exist = (await session.execute(
+            select(Channel).where(Channel.slug == payload["slug"], Channel.id != channel_id)
+        )).scalar_one_or_none()
+        if exist:
+            raise HTTPException(400, "slug already taken")
+        ch.slug = payload["slug"]
+    if "name" in payload:
+        ch.name = payload["name"]
+    if "description" in payload:
+        ch.description = payload["description"]
+    if "emoji" in payload:
+        ch.emoji = payload["emoji"]
+    await session.commit()
+    return {"ok": True}
+
+@router.delete("/channels/{channel_id}")
+async def delete_channel(
+    channel_id: int,
+    admin: User = Depends(require_admin), session: AsyncSession = Depends(get_session),
+):
+    ch = await session.get(Channel, channel_id)
+    if not ch:
+        raise HTTPException(404, "channel not found")
+    await session.delete(ch)
     await session.commit()
     return {"ok": True}
 

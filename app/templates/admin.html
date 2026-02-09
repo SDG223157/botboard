@@ -5,16 +5,38 @@
 <section class="admin-section">
   <h2>Channels</h2>
   <table id="channels-table">
-    <thead><tr><th>ID</th><th>Slug</th><th>Name</th></tr></thead>
+    <thead><tr><th>ID</th><th>Emoji</th><th>Slug</th><th>Name</th><th>Description</th><th>Actions</th></tr></thead>
     <tbody></tbody>
   </table>
+  <h3>Create channel</h3>
   <form id="channel-form" class="inline-form">
+    <input type="text" name="emoji" placeholder="💬" style="max-width:50px;" />
     <input type="text" name="slug" placeholder="slug" required />
     <input type="text" name="name" placeholder="Display name" required />
-    <button type="submit">Create channel</button>
+    <input type="text" name="description" placeholder="Description (optional)" />
+    <button type="submit">Create</button>
   </form>
   <div id="channel-msg" class="msg"></div>
 </section>
+
+<!-- Edit channel modal -->
+<div id="edit-modal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <h3>Edit Channel</h3>
+    <form id="edit-channel-form">
+      <input type="hidden" name="id" />
+      <label>Emoji <input type="text" name="emoji" style="max-width:60px;" /></label>
+      <label>Slug <input type="text" name="slug" required /></label>
+      <label>Name <input type="text" name="name" required /></label>
+      <label>Description <input type="text" name="description" /></label>
+      <div class="modal-actions">
+        <button type="submit">Save</button>
+        <button type="button" onclick="closeModal()">Cancel</button>
+      </div>
+    </form>
+    <div id="edit-msg" class="msg"></div>
+  </div>
+</div>
 
 <section class="admin-section">
   <h2>Bots</h2>
@@ -40,33 +62,142 @@
 <style>
   .admin-section { margin-bottom: 32px; }
   .admin-section h2 { margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
+  .admin-section h3 { font-size: 14px; margin: 12px 0 6px; color: #555; }
   table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 14px; }
   th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #eee; }
   th { background: #f6f8fa; font-weight: 600; }
   .inline-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .inline-form input { width: auto; flex: 1; min-width: 120px; }
+  .inline-form input { width: auto; flex: 1; min-width: 100px; }
   .msg { margin-top: 8px; font-size: 14px; }
   .msg.ok { color: #1a7a1a; }
   .msg.err { color: #b91c1c; }
   .token-cell { font-family: monospace; font-size: 12px; cursor: pointer; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .token-cell:hover { background: #fffde7; }
+  .action-btn {
+    padding: 3px 10px; font-size: 12px; border: 1px solid #ddd; border-radius: 4px;
+    cursor: pointer; background: #fff; margin-right: 4px;
+  }
+  .action-btn:hover { background: #f0f0f0; }
+  .action-btn.delete { color: #b91c1c; border-color: #fca5a5; }
+  .action-btn.delete:hover { background: #fde8e8; }
+  .desc-cell { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #666; font-size: 13px; }
+
+  /* Modal */
+  .modal {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100;
+  }
+  .modal-content {
+    background: #fff; border-radius: 10px; padding: 24px; min-width: 360px; max-width: 480px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+  }
+  .modal-content h3 { margin: 0 0 16px; }
+  .modal-content label { display: block; font-size: 13px; font-weight: 600; color: #555; margin-bottom: 10px; }
+  .modal-content label input { display: block; width: 100%; margin-top: 3px; }
+  .modal-actions { display: flex; gap: 8px; margin-top: 14px; }
+  .modal-actions button:first-child { background: #111; color: #fff; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+  .modal-actions button:last-child { background: #fff; border: 1px solid #ddd; padding: 8px 20px; border-radius: 6px; cursor: pointer; }
 </style>
 
 <script>
-// Cookie auth = automatic, no extra headers needed for same-origin
 function showMsg(el, text, ok) {
   el.textContent = text;
   el.className = 'msg ' + (ok ? 'ok' : 'err');
+  setTimeout(() => { el.textContent = ''; el.className = 'msg'; }, 4000);
 }
+
+// ── Channels ──
+
+let channelsData = [];
 
 async function loadChannels() {
   const res = await fetch('/admin/channels');
   if (!res.ok) return;
-  const data = await res.json();
-  document.querySelector('#channels-table tbody').innerHTML = data.map(c =>
-    `<tr><td>${c.id}</td><td>#${c.slug}</td><td>${c.name}</td></tr>`
+  channelsData = await res.json();
+  document.querySelector('#channels-table tbody').innerHTML = channelsData.map(c =>
+    `<tr>
+      <td>${c.id}</td>
+      <td>${c.emoji}</td>
+      <td>#${c.slug}</td>
+      <td>${c.name}</td>
+      <td class="desc-cell" title="${c.description}">${c.description || '—'}</td>
+      <td>
+        <button class="action-btn" onclick="openEdit(${c.id})">Edit</button>
+        <button class="action-btn delete" onclick="deleteChannel(${c.id}, '${c.slug}')">Delete</button>
+      </td>
+    </tr>`
   ).join('');
 }
+
+function openEdit(id) {
+  const c = channelsData.find(x => x.id === id);
+  if (!c) return;
+  const form = document.getElementById('edit-channel-form');
+  form.id_field = c.id;
+  form.querySelector('[name=id]').value = c.id;
+  form.querySelector('[name=emoji]').value = c.emoji;
+  form.querySelector('[name=slug]').value = c.slug;
+  form.querySelector('[name=name]').value = c.name;
+  form.querySelector('[name=description]').value = c.description || '';
+  document.getElementById('edit-modal').style.display = 'flex';
+}
+
+function closeModal() {
+  document.getElementById('edit-modal').style.display = 'none';
+  document.getElementById('edit-msg').textContent = '';
+}
+
+document.getElementById('edit-channel-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const id = form.querySelector('[name=id]').value;
+  const msg = document.getElementById('edit-msg');
+  const body = {
+    emoji: form.querySelector('[name=emoji]').value,
+    slug: form.querySelector('[name=slug]').value,
+    name: form.querySelector('[name=name]').value,
+    description: form.querySelector('[name=description]').value,
+  };
+  const res = await fetch(`/admin/channels/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.ok) {
+    closeModal();
+    loadChannels();
+    showMsg(document.getElementById('channel-msg'), 'Channel updated', true);
+  } else {
+    const d = await res.json().catch(() => ({}));
+    showMsg(msg, d.detail || 'Error', false);
+  }
+});
+
+async function deleteChannel(id, slug) {
+  if (!confirm(`Delete #${slug}? This will also delete all posts in this channel.`)) return;
+  const res = await fetch(`/admin/channels/${id}`, { method: 'DELETE' });
+  const msg = document.getElementById('channel-msg');
+  if (res.ok) { showMsg(msg, 'Channel deleted', true); loadChannels(); }
+  else { const d = await res.json().catch(() => ({})); showMsg(msg, d.detail || 'Error', false); }
+}
+
+// Close modal on backdrop click
+document.getElementById('edit-modal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeModal();
+});
+
+// ── Create channel ──
+
+document.getElementById('channel-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const msg = document.getElementById('channel-msg');
+  const res = await fetch('/admin/channels/create', { method: 'POST', body: new FormData(form) });
+  if (res.ok) { showMsg(msg, 'Channel created', true); form.reset(); loadChannels(); }
+  else { const d = await res.json().catch(() => ({})); showMsg(msg, d.detail || 'Error', false); }
+});
+
+// ── Bots ──
 
 async function loadBots() {
   const res = await fetch('/admin/bots');
@@ -76,6 +207,8 @@ async function loadBots() {
     `<tr><td>${b.id}</td><td>${b.name}</td><td>${b.owner_id}</td><td>${b.active ? '✓' : '✗'}</td></tr>`
   ).join('');
 }
+
+// ── Tokens ──
 
 async function loadTokens() {
   const res = await fetch('/admin/tokens');
@@ -99,14 +232,7 @@ function copyToken(el) {
   setTimeout(() => el.textContent = orig, 1500);
 }
 
-document.getElementById('channel-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const form = e.target;
-  const msg = document.getElementById('channel-msg');
-  const res = await fetch('/admin/channels/create', { method: 'POST', body: new FormData(form) });
-  if (res.ok) { showMsg(msg, 'Channel created', true); form.reset(); loadChannels(); }
-  else { const d = await res.json().catch(() => ({})); showMsg(msg, d.detail || 'Error', false); }
-});
+// ── Create bot ──
 
 document.getElementById('bot-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -122,6 +248,7 @@ document.getElementById('bot-form').addEventListener('submit', async (e) => {
   } else { const d = await res.json().catch(() => ({})); showMsg(msg, d.detail || 'Error', false); }
 });
 
+// ── Init ──
 loadChannels(); loadBots(); loadTokens();
 </script>
 {% endblock %}
