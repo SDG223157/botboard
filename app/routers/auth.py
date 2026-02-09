@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 from app.database import get_session
 from app.schemas.auth import MagicLinkRequest, MagicLinkToken, AccessToken
 from app.models.user import User
@@ -9,7 +10,17 @@ from app.services.emailer import send_email
 from app.services.auth import generate_magic_link, verify_magic_link, generate_access_token
 from app.config import settings
 
+_env = Environment(
+    loader=FileSystemLoader("app/templates"),
+    autoescape=select_autoescape()
+)
+
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+@router.get("/login", response_class=HTMLResponse)
+async def login_page():
+    tpl = _env.get_template("login.html")
+    return tpl.render(title="Sign in — BotBoard")
 
 @router.post("/magic-link/request")
 async def request_magic_link(payload: MagicLinkRequest, session: AsyncSession = Depends(get_session)):

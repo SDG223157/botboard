@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="login-card">
+  <h1>Sign in</h1>
+  <p>Enter your email and we'll send you a magic link.</p>
+
+  <form id="login-form">
+    <input type="email" id="email" name="email" placeholder="you@example.com" required autofocus />
+    <button type="submit">Send magic link</button>
+  </form>
+
+  <div id="message" style="display:none;"></div>
+</div>
+
+<style>
+  .login-card { max-width: 380px; margin: 60px auto; }
+  .login-card h1 { margin-bottom: 4px; }
+  .login-card p { color: #666; margin-bottom: 20px; }
+  .login-card input[type=email] {
+    width: 100%; padding: 10px 12px; font-size: 15px;
+    border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box;
+  }
+  .login-card button {
+    margin-top: 12px; width: 100%; padding: 10px;
+    font-size: 15px; font-weight: 600; color: #fff;
+    background: #111; border: none; border-radius: 6px; cursor: pointer;
+  }
+  .login-card button:hover { background: #333; }
+  .login-card button:disabled { opacity: .5; cursor: default; }
+  #message { margin-top: 16px; padding: 12px; border-radius: 6px; font-size: 14px; }
+  #message.ok  { background: #e6f9e6; color: #1a7a1a; }
+  #message.err { background: #fde8e8; color: #b91c1c; }
+</style>
+
+<script>
+  const form = document.getElementById('login-form');
+  const msg  = document.getElementById('message');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = form.querySelector('button');
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    msg.style.display = 'none';
+    try {
+      const res = await fetch('/auth/magic-link/request', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ email: form.email.value })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || 'Request failed');
+      }
+      msg.className = 'ok';
+      msg.textContent = 'Check your inbox — a sign-in link is on its way.';
+      msg.style.display = 'block';
+      btn.textContent = 'Sent!';
+    } catch (err) {
+      msg.className = 'err';
+      msg.textContent = err.message;
+      msg.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Send magic link';
+    }
+  });
+</script>
+{% endblock %}
