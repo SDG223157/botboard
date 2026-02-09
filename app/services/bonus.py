@@ -9,6 +9,56 @@ from app.models.post import Post
 
 logger = logging.getLogger(__name__)
 
+# ── Milestone levels ──
+
+LEVELS = [
+    {"name": "Newcomer",   "emoji": "🌱", "min_points": 0},
+    {"name": "Bronze",     "emoji": "🥉", "min_points": 10},
+    {"name": "Silver",     "emoji": "🥈", "min_points": 30},
+    {"name": "Gold",       "emoji": "🥇", "min_points": 75},
+    {"name": "Platinum",   "emoji": "💎", "min_points": 150},
+    {"name": "Diamond",    "emoji": "👑", "min_points": 300},
+    {"name": "Legend",     "emoji": "🏆", "min_points": 500},
+]
+
+
+def get_level(points: int) -> dict:
+    """Get the milestone level for a given point total."""
+    level = LEVELS[0]
+    for lv in LEVELS:
+        if points >= lv["min_points"]:
+            level = lv
+    return level
+
+
+def get_next_level(points: int) -> dict | None:
+    """Get the next milestone level to reach, or None if at max."""
+    for lv in LEVELS:
+        if points < lv["min_points"]:
+            return lv
+    return None
+
+
+def get_level_progress(points: int) -> dict:
+    """Get current level, next level, and progress info."""
+    current = get_level(points)
+    nxt = get_next_level(points)
+    result = {
+        "level": current["name"],
+        "level_emoji": current["emoji"],
+        "points": points,
+    }
+    if nxt:
+        result["next_level"] = nxt["name"]
+        result["next_level_emoji"] = nxt["emoji"]
+        result["points_to_next"] = nxt["min_points"] - points
+        result["next_level_at"] = nxt["min_points"]
+    else:
+        result["next_level"] = None
+        result["points_to_next"] = 0
+        result["next_level_at"] = None
+    return result
+
 # ── Quality signal detectors ──
 
 NEWS_KEYWORDS = [
@@ -217,6 +267,10 @@ async def get_bot_bonus_total(bot_id: int, session: AsyncSession) -> int:
 async def get_bot_bonus_breakdown(bot_id: int, session: AsyncSession) -> dict:
     """Get detailed bonus breakdown for a bot."""
     total = await get_bot_bonus_total(bot_id, session)
+    level_info = get_level_progress(total)
+
+    # Rank
+    rank = await get_bot_rank(bot_id, session)
 
     # Count by reason
     rows = (await session.execute(
@@ -235,6 +289,8 @@ async def get_bot_bonus_breakdown(bot_id: int, session: AsyncSession) -> dict:
 
     return {
         "total_points": total,
+        **level_info,
+        "rank": rank,
         "breakdown": breakdown,
         "recent": [
             {
@@ -249,6 +305,23 @@ async def get_bot_bonus_breakdown(bot_id: int, session: AsyncSession) -> dict:
             for b in recent
         ],
     }
+
+
+async def get_bot_rank(bot_id: int, session: AsyncSession) -> int:
+    """Get a bot's rank on the leaderboard (1-indexed). Returns 0 if no points."""
+    from app.models.bot import Bot
+
+    # Get all bots ordered by points
+    rows = (await session.execute(
+        select(BonusLog.bot_id, func.sum(BonusLog.points).label("total"))
+        .group_by(BonusLog.bot_id)
+        .order_by(func.sum(BonusLog.points).desc())
+    )).all()
+
+    for i, r in enumerate(rows):
+        if r.bot_id == bot_id:
+            return i + 1
+    return 0
 
 
 async def get_leaderboard(session: AsyncSession, limit: int = 20) -> list[dict]:
@@ -270,12 +343,16 @@ async def get_leaderboard(session: AsyncSession, limit: int = 20) -> list[dict]:
     for r in rows:
         bot = await session.get(Bot, r.bot_id)
         if bot:
+            pts = int(r.total_points)
+            lv = get_level(pts)
             result.append({
                 "bot_id": r.bot_id,
                 "bot_name": bot.name,
                 "avatar_emoji": bot.avatar_emoji or "🤖",
-                "total_points": int(r.total_points),
+                "total_points": pts,
                 "award_count": int(r.award_count),
+                "level": lv["name"],
+                "level_emoji": lv["emoji"],
             })
 
     return result

@@ -525,6 +525,35 @@ h2 { font-size: 18px; margin: 28px 0 12px; font-weight: 700; letter-spacing: -0.
   border-radius: var(--radius-full);
 }
 
+/* Level progress bar */
+.level-progress-bar {
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 14px 18px; margin-bottom: 24px;
+  box-shadow: var(--shadow-sm);
+}
+.level-progress-info {
+  display: flex; justify-content: space-between; font-size: 13px;
+  font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;
+}
+.level-progress-track {
+  height: 10px; background: var(--bg-tertiary); border-radius: var(--radius-full);
+  overflow: hidden;
+}
+.level-progress-fill {
+  height: 100%; border-radius: var(--radius-full);
+  background: linear-gradient(90deg, var(--accent), #f59e0b);
+  transition: width 0.5s ease;
+}
+.level-progress-label {
+  font-size: 12px; color: var(--text-tertiary); margin-top: 6px; text-align: center;
+}
+
+/* Level badge */
+.level-badge {
+  font-size: 11px; font-weight: 700; color: var(--text-tertiary);
+  margin-left: 4px;
+}
+
 /* Agent bonus badge */
 .agent-bonus-badge {
   display: inline-block; font-size: 11px; font-weight: 700;

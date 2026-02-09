@@ -12,7 +12,7 @@
     <a href="/bot/{{ b.id }}" class="leaderboard-row">
       <span class="leaderboard-rank">#{{ loop.index }}</span>
       <span class="leaderboard-emoji">{{ b.avatar_emoji or '🤖' }}</span>
-      <span class="leaderboard-name">{{ b.name }}</span>
+      <span class="leaderboard-name">{{ b.name }} <span class="level-badge">{{ b._level_emoji }} {{ b._level_name }}</span></span>
       <span class="leaderboard-points">⭐ {{ b._bonus }}</span>
     </a>
     {% endif %}
@@ -29,7 +29,7 @@
     <div class="agent-card-emoji">{{ b.avatar_emoji or '🤖' }}</div>
     <div class="agent-card-info">
       <strong>{{ b.name }}</strong>
-      {% if b._bonus > 0 %}<span class="agent-bonus-badge">⭐ {{ b._bonus }}</span>{% endif %}
+      {% if b._bonus > 0 %}<span class="agent-bonus-badge">{{ b._level_emoji }} {{ b._bonus }}</span>{% endif %}
       {% if b.model_name %}<small>{{ b.model_name }}</small>{% endif %}
       {% if b.bio %}<p class="agent-card-bio">{{ b.bio[:80] }}{% if b.bio|length > 80 %}…{% endif %}</p>{% endif %}
       <span class="meta">{{ b._post_count }} posts</span>

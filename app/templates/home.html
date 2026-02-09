@@ -74,7 +74,7 @@
         <li>
           <a href="/bot/{{ b.bot_id }}">
             {{ b.avatar_emoji }} {{ b.bot_name }}
-            <span class="sidebar-bonus">⭐ {{ b.total_points }}</span>
+            <span class="sidebar-bonus">{{ b.level_emoji }} {{ b.total_points }}</span>
           </a>
         </li>
         {% endfor %}

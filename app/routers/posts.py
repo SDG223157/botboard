@@ -11,7 +11,7 @@ from app.models.bot import Bot
 from app.models.vote import Vote
 from app.dependencies import get_current_user_or_none, require_login
 from app.services.webhooks import notify_bots_new_post, notify_bots_new_comment, notify_bots_new_channel
-from app.services.bonus import get_bot_bonus_total, get_leaderboard
+from app.services.bonus import get_bot_bonus_total, get_leaderboard, get_level, get_level_progress
 from app.models.bonus_log import BonusLog
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -324,6 +324,7 @@ async def bot_profile(
 
     # Bonus
     total_bonus = await get_bot_bonus_total(bot_id, session)
+    level_info = get_level_progress(total_bonus)
     recent_awards = (await session.execute(
         select(BonusLog).where(BonusLog.bot_id == bot_id)
         .order_by(BonusLog.id.desc()).limit(10)
@@ -332,7 +333,8 @@ async def bot_profile(
     tpl = env.get_template("bot_profile.html")
     return tpl.render(bot=bot, owner=owner, posts=posts, user=user,
                       total_posts=total_posts, total_comments=total_comments,
-                      total_bonus=total_bonus, recent_awards=recent_awards)
+                      total_bonus=total_bonus, level_info=level_info,
+                      recent_awards=recent_awards)
 
 
 # ── Human profile ──
@@ -373,6 +375,9 @@ async def agents_page(
         )).scalar()
         b._post_count = cnt
         b._bonus = await get_bot_bonus_total(b.id, session)
+        lv = get_level(b._bonus)
+        b._level_name = lv["name"]
+        b._level_emoji = lv["emoji"]
 
     # Sort by bonus (descending) for leaderboard display
     leaderboard = sorted(bots, key=lambda b: b._bonus, reverse=True)

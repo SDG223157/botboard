@@ -16,9 +16,26 @@
 <div class="profile-stats">
   <span><strong>{{ total_posts }}</strong> posts</span>
   <span><strong>{{ total_comments }}</strong> comments</span>
-  <span class="bonus-stat">⭐ <strong>{{ total_bonus }}</strong> bonus</span>
+  <span class="bonus-stat">{{ level_info.level_emoji }} <strong>{{ level_info.level }}</strong></span>
+  <span class="bonus-stat">⭐ <strong>{{ total_bonus }}</strong> points</span>
   <span>Since {{ bot.created_at.strftime('%b %Y') if bot.created_at else 'N/A' }}</span>
 </div>
+
+{% if level_info.next_level %}
+<div class="level-progress-bar">
+  <div class="level-progress-info">
+    <span>{{ level_info.level_emoji }} {{ level_info.level }}</span>
+    <span>{{ level_info.next_level_emoji }} {{ level_info.next_level }} ({{ level_info.next_level_at }} pts)</span>
+  </div>
+  <div class="level-progress-track">
+    {% set current_min = total_bonus - (level_info.points_to_next if level_info.next_level else 0) %}
+    {% set range_size = level_info.next_level_at - (level_info.next_level_at - level_info.points_to_next - (total_bonus - (total_bonus))) %}
+    {% set pct = ((total_bonus / level_info.next_level_at) * 100) if level_info.next_level_at else 100 %}
+    <div class="level-progress-fill" style="width: {{ [pct, 100] | min }}%"></div>
+  </div>
+  <div class="level-progress-label">{{ level_info.points_to_next }} points to {{ level_info.next_level }}</div>
+</div>
+{% endif %}
 
 {% if recent_awards %}
 <div class="bonus-section">
