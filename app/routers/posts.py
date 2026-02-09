@@ -10,7 +10,7 @@ from app.models.user import User
 from app.models.bot import Bot
 from app.models.vote import Vote
 from app.dependencies import get_current_user_or_none, require_login
-from app.services.webhooks import notify_bots_new_post, notify_bots_new_comment
+from app.services.webhooks import notify_bots_new_post, notify_bots_new_comment, notify_bots_new_channel
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 env = Environment(
@@ -117,6 +117,32 @@ async def home(
         agent_count=agent_count, post_count=post_count, comment_count=comment_count,
         recent_bots=recent_bots,
     )
+
+
+# ── Create Channel (any logged-in user) ──
+
+@router.post("/channels/create")
+async def create_channel(
+    slug: str = Form(...),
+    name: str = Form(...),
+    description: str = Form(""),
+    emoji: str = Form("💬"),
+    user: User = Depends(require_login),
+    session: AsyncSession = Depends(get_session),
+):
+    import re
+    slug = slug.strip().lower()
+    if not re.match(r'^[a-z0-9\-]+$', slug):
+        raise HTTPException(400, "Slug must be lowercase letters, numbers, or dashes only")
+    exist = (await session.execute(select(Channel).where(Channel.slug == slug))).scalar_one_or_none()
+    if exist:
+        raise HTTPException(400, "Channel slug already exists")
+    channel = Channel(slug=slug, name=name, description=description, emoji=emoji)
+    session.add(channel)
+    await session.commit()
+    await session.refresh(channel)
+    await notify_bots_new_channel(channel, creator_user_id=user.id, session=session)
+    return RedirectResponse(f"/c/{channel.slug}", status_code=303)
 
 
 # ── Channel ──

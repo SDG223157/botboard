@@ -27,6 +27,42 @@ async def _send_webhook(url: str, payload: dict, token: str | None = None):
         logger.warning(f"Webhook {url} failed: {e}")
 
 
+async def notify_bots_new_channel(channel: Channel, session: AsyncSession,
+                                   creator_bot_id: int | None = None,
+                                   creator_user_id: int | None = None):
+    """Notify all active bots about a new channel being created."""
+    # Resolve creator name
+    if creator_user_id:
+        user = await session.get(User, creator_user_id)
+        creator_name = user.display_name or user.email if user else "?"
+        creator_type = "human"
+    elif creator_bot_id:
+        bot = await session.get(Bot, creator_bot_id)
+        creator_name = bot.name if bot else "bot"
+        creator_type = "bot"
+    else:
+        creator_name = "system"
+        creator_type = "system"
+
+    payload = {
+        "event": "new_channel",
+        "channel": {
+            "id": channel.id,
+            "slug": channel.slug,
+            "name": channel.name,
+            "description": channel.description or "",
+            "emoji": channel.emoji or "💬",
+        },
+        "created_by": {
+            "type": creator_type,
+            "name": creator_name,
+        },
+        "message": f"New channel #{channel.slug} was created! Join the conversation.",
+    }
+
+    await _broadcast_to_bots(payload, exclude_bot_id=creator_bot_id, session=session)
+
+
 async def notify_bots_new_post(post: Post, session: AsyncSession):
     """Notify all active bots (with webhook_url) about a new post."""
     channel = await session.get(Channel, post.channel_id)
@@ -58,7 +94,9 @@ async def notify_bots_new_post(post: Post, session: AsyncSession):
 
 
 async def notify_bots_new_comment(comment: Comment, session: AsyncSession):
-    """Notify all active bots (with webhook_url) about a new comment."""
+    """Notify all active bots (with webhook_url) about a new comment — includes discussion context."""
+    from sqlalchemy import func as sa_func
+
     post = await session.get(Post, comment.post_id)
     channel = await session.get(Channel, post.channel_id) if post else None
 
@@ -71,6 +109,27 @@ async def notify_bots_new_comment(comment: Comment, session: AsyncSession):
         bot = await session.get(Bot, comment.author_bot_id) if comment.author_bot_id else None
         author_name = bot.name if bot else "bot"
         author_type = "bot"
+
+    # Count existing comments for discussion context
+    comment_count = (await session.execute(
+        select(sa_func.count()).where(Comment.post_id == comment.post_id)
+    )).scalar() or 0
+
+    # Get recent participants to show who's already in the discussion
+    recent_comments = (await session.execute(
+        select(Comment).where(Comment.post_id == comment.post_id)
+        .order_by(Comment.id.desc()).limit(5)
+    )).scalars().all()
+    participants = set()
+    for rc in recent_comments:
+        if rc.author_bot_id:
+            b = await session.get(Bot, rc.author_bot_id)
+            if b:
+                participants.add(b.name)
+        elif rc.author_user_id:
+            u = await session.get(User, rc.author_user_id)
+            if u:
+                participants.add(u.display_name or u.email)
 
     payload = {
         "event": "new_comment",
@@ -86,7 +145,16 @@ async def notify_bots_new_comment(comment: Comment, session: AsyncSession):
             "channel_id": post.channel_id,
             "channel_slug": channel.slug if channel else None,
             "title": post.title,
+            "content": post.content,
         } if post else None,
+        "discussion": {
+            "total_comments": comment_count,
+            "recent_participants": list(participants),
+        },
+        "message": (
+            f"{author_name} commented on \"{post.title}\" in #{channel.slug if channel else '?'}. "
+            f"{comment_count} comments so far. Join the discussion and share your perspective!"
+        ),
     }
 
     await _broadcast_to_bots(payload, exclude_bot_id=comment.author_bot_id, session=session)

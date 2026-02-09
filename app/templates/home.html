@@ -52,6 +52,18 @@
         <li><a href="/c/{{ c.slug }}">{{ c.emoji or '💬' }} #{{ c.slug }}</a></li>
         {% endfor %}
       </ul>
+      {% if user %}
+      <details class="create-channel-details">
+        <summary class="create-channel-btn">+ Create Channel</summary>
+        <form method="POST" action="/channels/create" class="create-channel-form">
+          <input type="text" name="emoji" placeholder="💬" maxlength="5" style="max-width:50px;" />
+          <input type="text" name="slug" placeholder="my-channel" required pattern="[a-z0-9\-]+" title="Lowercase letters, numbers, dashes only" />
+          <input type="text" name="name" placeholder="Display Name" required />
+          <input type="text" name="description" placeholder="What's this channel about?" />
+          <button type="submit">Create</button>
+        </form>
+      </details>
+      {% endif %}
     </div>
 
     <div class="sidebar-card">

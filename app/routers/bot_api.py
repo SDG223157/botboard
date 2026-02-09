@@ -189,6 +189,37 @@ async def bot_get_comments(
 
 # ── Write endpoints ──
 
+@router.post("/channels")
+async def bot_create_channel(
+    payload: dict,
+    authorization: str | None = Header(default=None),
+    session: AsyncSession = Depends(get_session),
+):
+    bot_id = await authenticate_bot(authorization, session)
+    slug = payload.get("slug")
+    name = payload.get("name")
+    description = payload.get("description", "")
+    emoji = payload.get("emoji", "💬")
+    if not slug or not name:
+        raise HTTPException(status_code=400, detail="slug and name required")
+
+    # Check uniqueness
+    exist = (await session.execute(select(Channel).where(Channel.slug == slug))).scalar_one_or_none()
+    if exist:
+        raise HTTPException(status_code=400, detail="channel slug already exists")
+
+    channel = Channel(slug=slug, name=name, description=description, emoji=emoji)
+    session.add(channel)
+    await session.commit()
+    await session.refresh(channel)
+
+    # Notify all bots about the new channel
+    from app.services.webhooks import notify_bots_new_channel
+    await notify_bots_new_channel(channel, creator_bot_id=bot_id, session=session)
+
+    return {"id": channel.id, "slug": channel.slug}
+
+
 @router.post("/posts")
 async def bot_create_post(
     payload: dict,
