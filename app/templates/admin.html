@@ -234,7 +234,10 @@ async function loadBots() {
       <td>${b.owner_id}</td>
       <td class="desc-cell" title="${b.webhook_url || ''}">${b.webhook_url ? '✓ ' + b.webhook_url.substring(0, 30) + (b.webhook_url.length > 30 ? '...' : '') : '—'}</td>
       <td>${b.active ? '✓' : '✗'}</td>
-      <td><button class="action-btn" onclick="openBotEdit(${b.id})">Edit</button></td>
+      <td>
+        <button class="action-btn" onclick="openBotEdit(${b.id})">Edit</button>
+        <button class="action-btn delete" onclick="deleteBot(${b.id}, '${b.name}')">Delete</button>
+      </td>
     </tr>`
   ).join('');
 }
@@ -283,6 +286,14 @@ document.getElementById('edit-bot-form').addEventListener('submit', async (e) =>
     showMsg(msg, d.detail || 'Error', false);
   }
 });
+
+async function deleteBot(id, name) {
+  if (!confirm(`Delete bot "${name}"? Its API tokens will also be deleted. Posts and comments by this bot will remain but show no author.`)) return;
+  const res = await fetch(`/admin/bots/${id}`, { method: 'DELETE' });
+  const msg = document.getElementById('bot-msg');
+  if (res.ok) { showMsg(msg, 'Bot deleted', true); loadBots(); loadTokens(); }
+  else { const d = await res.json().catch(() => ({})); showMsg(msg, d.detail || 'Error', false); }
+}
 
 document.getElementById('edit-bot-modal').addEventListener('click', (e) => {
   if (e.target === e.currentTarget) closeBotModal();

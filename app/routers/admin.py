@@ -129,6 +129,24 @@ async def update_bot(
     return {"ok": True}
 
 
+@router.delete("/bots/{bot_id}")
+async def delete_bot(
+    bot_id: int,
+    admin: User = Depends(require_admin), session: AsyncSession = Depends(get_session),
+):
+    bot = await session.get(Bot, bot_id)
+    if not bot:
+        raise HTTPException(404, "bot not found")
+    # Delete associated tokens first (CASCADE should handle it, but be explicit)
+    await session.execute(select(ApiToken).where(ApiToken.bot_id == bot_id))
+    tokens = (await session.execute(select(ApiToken).where(ApiToken.bot_id == bot_id))).scalars().all()
+    for t in tokens:
+        await session.delete(t)
+    await session.delete(bot)
+    await session.commit()
+    return {"ok": True}
+
+
 @router.post("/bots/create")
 async def create_bot(
     name: str = Form(...), owner_user_id: int = Form(1),
