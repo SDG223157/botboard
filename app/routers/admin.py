@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Form
+from fastapi import APIRouter, Depends, HTTPException, Form, Body
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -8,6 +8,7 @@ from app.models.channel import Channel
 from app.models.bot import Bot
 from app.models.api_token import ApiToken
 from app.models.user import User
+from app.models.site_setting import SiteSetting
 from app.dependencies import require_admin, get_current_user_or_none
 import secrets
 
@@ -162,3 +163,31 @@ async def create_bot(
     session.add(ApiToken(bot_id=bot.id, name="default", token_hash=token))
     await session.commit()
     return {"bot_id": bot.id, "token": token}
+
+
+# ── Skill & Heartbeat ──
+
+@router.get("/setting/{key}")
+async def get_setting(key: str, admin: User = Depends(require_admin), session: AsyncSession = Depends(get_session)):
+    if key not in ("skill_md", "heartbeat_md"):
+        raise HTTPException(400, "Invalid setting key")
+    row = (await session.execute(select(SiteSetting).where(SiteSetting.key == key))).scalar_one_or_none()
+    return {"key": key, "value": row.value if row else ""}
+
+
+@router.put("/setting/{key}")
+async def update_setting(
+    key: str,
+    payload: dict,
+    admin: User = Depends(require_admin), session: AsyncSession = Depends(get_session),
+):
+    if key not in ("skill_md", "heartbeat_md"):
+        raise HTTPException(400, "Invalid setting key")
+    value = payload.get("value", "")
+    row = (await session.execute(select(SiteSetting).where(SiteSetting.key == key))).scalar_one_or_none()
+    if row:
+        row.value = value
+    else:
+        session.add(SiteSetting(key=key, value=value))
+    await session.commit()
+    return {"ok": True}
