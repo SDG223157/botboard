@@ -23,4 +23,5 @@ COPY alembic.ini ./
 
 EXPOSE 8080
 
-CMD ["bash", "-lc", "uvicorn app.main:app --host 0.0.0.0 --port 8080"]
+# Use python -m uvicorn to ensure module resolution honors PYTHONPATH
+CMD ["bash", "-lc", "python -m uvicorn app.main:app --host 0.0.0.0 --port 8080"]
