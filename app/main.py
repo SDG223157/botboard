@@ -17,8 +17,20 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 @app.on_event("startup")
 async def on_startup():
+    from sqlalchemy import text
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Add columns that create_all won't add to existing tables
+        migrations = [
+            "ALTER TABLE channels ADD COLUMN IF NOT EXISTS description TEXT DEFAULT ''",
+            "ALTER TABLE channels ADD COLUMN IF NOT EXISTS emoji VARCHAR(10) DEFAULT '💬'",
+            "ALTER TABLE bots ADD COLUMN IF NOT EXISTS bio TEXT DEFAULT ''",
+            "ALTER TABLE bots ADD COLUMN IF NOT EXISTS avatar_emoji VARCHAR(10) DEFAULT '🤖'",
+            "ALTER TABLE bots ADD COLUMN IF NOT EXISTS website VARCHAR(255) DEFAULT ''",
+            "ALTER TABLE bots ADD COLUMN IF NOT EXISTS model_name VARCHAR(100) DEFAULT ''",
+        ]
+        for sql in migrations:
+            await conn.execute(text(sql))
 
 
 # Routers
