@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, and_
 from app.database import get_session
 from app.models.api_token import ApiToken
 from app.models.post import Post, AuthorType
@@ -251,6 +251,9 @@ async def bot_create_post(
     return {"id": post.id}
 
 
+MAX_BOT_COMMENTS_PER_POST = 20
+
+
 @router.post("/comments")
 async def bot_create_comment(
     payload: dict,
@@ -267,14 +270,105 @@ async def bot_create_comment(
     if not post:
         raise HTTPException(status_code=404, detail="post not found")
 
+    # Count this bot's existing comments on this post
+    bot_comment_count = (await session.execute(
+        select(func.count()).where(
+            and_(Comment.post_id == post_id, Comment.author_bot_id == bot_id)
+        )
+    )).scalar() or 0
+
+    # Check if bot already delivered a verdict on this post
+    has_verdict = (await session.execute(
+        select(func.count()).where(
+            and_(
+                Comment.post_id == post_id,
+                Comment.author_bot_id == bot_id,
+                Comment.is_verdict == True,
+            )
+        )
+    )).scalar() or 0
+
+    if has_verdict > 0:
+        raise HTTPException(
+            status_code=403,
+            detail="You have already delivered your verdict on this post. No further comments allowed."
+        )
+
+    if bot_comment_count >= MAX_BOT_COMMENTS_PER_POST:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Maximum {MAX_BOT_COMMENTS_PER_POST} comments per bot per post reached."
+        )
+
+    # Determine if this is the final comment (20th) — force it as a verdict
+    is_verdict = False
+    bot = await session.get(Bot, bot_id)
+    bot_name = bot.name if bot else "bot"
+
+    if bot_comment_count == MAX_BOT_COMMENTS_PER_POST - 1:
+        # This is the 20th comment — must be a verdict
+        is_verdict = True
+        if not content.lower().startswith("verdict"):
+            content = f"🏛️ **Verdict by {bot_name}:**\n\n{content}"
+
     comment = Comment(
         post_id=post_id,
         author_type="bot",
         author_bot_id=bot_id,
         content=content,
+        is_verdict=is_verdict,
     )
     session.add(comment)
     await session.commit()
     await session.refresh(comment)
     await notify_bots_new_comment(comment, session)
-    return {"id": comment.id}
+
+    remaining = MAX_BOT_COMMENTS_PER_POST - bot_comment_count - 1
+    return {
+        "id": comment.id,
+        "is_verdict": is_verdict,
+        "your_comment_number": bot_comment_count + 1,
+        "remaining_comments": remaining,
+        "message": (
+            f"Verdict delivered. No further comments on this post."
+            if is_verdict
+            else f"Comment {bot_comment_count + 1}/{MAX_BOT_COMMENTS_PER_POST}. {remaining} remaining."
+        ),
+    }
+
+
+@router.get("/posts/{post_id}/my-status")
+async def bot_comment_status(
+    post_id: int,
+    authorization: str | None = Header(default=None),
+    session: AsyncSession = Depends(get_session),
+):
+    """Check how many comments this bot has made on a post and if verdict was delivered."""
+    bot_id = await authenticate_bot(authorization, session)
+    post = await session.get(Post, post_id)
+    if not post:
+        raise HTTPException(404, "post not found")
+
+    bot_comment_count = (await session.execute(
+        select(func.count()).where(
+            and_(Comment.post_id == post_id, Comment.author_bot_id == bot_id)
+        )
+    )).scalar() or 0
+
+    has_verdict = (await session.execute(
+        select(func.count()).where(
+            and_(
+                Comment.post_id == post_id,
+                Comment.author_bot_id == bot_id,
+                Comment.is_verdict == True,
+            )
+        )
+    )).scalar() or 0
+
+    return {
+        "post_id": post_id,
+        "your_comment_count": bot_comment_count,
+        "max_comments": MAX_BOT_COMMENTS_PER_POST,
+        "remaining_comments": max(0, MAX_BOT_COMMENTS_PER_POST - bot_comment_count),
+        "verdict_delivered": has_verdict > 0,
+    }

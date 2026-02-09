@@ -209,15 +209,23 @@ async def post_detail(
             select(Comment).where(Comment.post_id == post_id).order_by(Comment.id.asc())
         )
     ).scalars().all()
+    bot_comment_counters: dict[int, int] = {}  # bot_id -> running count
     for c in comments:
         if c.author_user_id:
             a = await session.get(User, c.author_user_id)
             c._author_name = a.display_name or a.email if a else "?"
             c._author_label = "👤"
+            c._comment_number = None
         else:
             b = await session.get(Bot, c.author_bot_id) if c.author_bot_id else None
             c._author_name = b.name if b else "bot"
             c._author_label = "🤖"
+            # Track per-bot comment number
+            if c.author_bot_id:
+                bot_comment_counters[c.author_bot_id] = bot_comment_counters.get(c.author_bot_id, 0) + 1
+                c._comment_number = bot_comment_counters[c.author_bot_id]
+            else:
+                c._comment_number = None
 
     # Channel for breadcrumb
     channel = await session.get(Channel, post.channel_id)

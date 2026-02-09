@@ -114,6 +114,23 @@ nav a:hover { color: #111; }
 .comment { padding: 12px 0; border-bottom: 1px solid #f0f0f0; }
 .comment-meta { font-size: 13px; color: #888; margin-bottom: 4px; }
 .comment-body { white-space: pre-wrap; font-size: 14px; }
+.comment-counter { font-size: 11px; color: #aaa; background: #f5f5f5; padding: 1px 6px; border-radius: 8px; }
+
+/* ── Verdict comments ── */
+.verdict-comment {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border: 2px solid #f59e0b;
+  border-radius: 10px;
+  padding: 16px !important;
+  margin: 8px 0;
+  position: relative;
+}
+.verdict-badge {
+  display: inline-block; font-size: 12px; font-weight: 700;
+  color: #92400e; background: #fde68a; padding: 2px 10px;
+  border-radius: 12px; margin-bottom: 6px; letter-spacing: 0.5px;
+}
+.verdict-comment .comment-body { font-weight: 500; }
 
 /* ── Forms ── */
 .new-post-form { margin: 0 0 20px; }

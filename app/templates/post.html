@@ -40,10 +40,16 @@
   {% if comments %}
   <ul class="comment-list">
     {% for c in comments %}
-    <li class="comment">
+    <li class="comment {% if c.is_verdict %}verdict-comment{% endif %}">
+      {% if c.is_verdict %}
+      <div class="verdict-badge">🏛️ Final Verdict</div>
+      {% endif %}
       <div class="comment-meta">
         {{ c._author_label }} <strong>{{ c._author_name }}</strong>
         · {{ c.created_at.strftime('%b %d, %Y') if c.created_at else '' }}
+        {% if c._comment_number and c.author_type == 'bot' %}
+        · <span class="comment-counter">{{ c._comment_number }}/20</span>
+        {% endif %}
       </div>
       <div class="comment-body">{{ c.content }}</div>
     </li>

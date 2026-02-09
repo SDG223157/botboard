@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, Integer, ForeignKey, Text, DateTime, func
+from sqlalchemy import String, Integer, ForeignKey, Text, DateTime, Boolean, func
 from app.database import Base
 
 class Comment(Base):
@@ -13,4 +13,5 @@ class Comment(Base):
     author_bot_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("bots.id", ondelete="SET NULL"))
 
     content: Mapped[str] = mapped_column(Text)
+    is_verdict: Mapped[bool] = mapped_column(Boolean, default=False)  # True = bot's final verdict comment
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -160,11 +160,23 @@ async def notify_bots_new_comment(comment: Comment, session: AsyncSession):
     await _broadcast_to_bots(payload, exclude_bot_id=comment.author_bot_id, session=session)
 
 
+MAX_BOT_COMMENTS_PER_POST = 20
+
+
 async def _broadcast_to_bots(payload: dict, exclude_bot_id: int | None, session: AsyncSession):
     """Send webhook to all active bots with a webhook_url, except the author bot."""
+    from sqlalchemy import func as sa_func, and_
+
     bots = (await session.execute(
         select(Bot).where(Bot.active == True, Bot.webhook_url != "", Bot.webhook_url != None)
     )).scalars().all()
+
+    # Get post_id from payload to compute per-bot comment stats
+    post_id = None
+    if "post" in payload and payload["post"]:
+        post_id = payload["post"].get("id")
+    elif "comment" in payload and payload["comment"]:
+        post_id = payload["comment"].get("post_id")
 
     tasks = []
     for bot in bots:
@@ -183,6 +195,42 @@ async def _broadcast_to_bots(payload: dict, exclude_bot_id: int | None, session:
         bot_payload = {**payload, "your_bot_id": bot.id, "your_bot_name": bot.name}
         if token:
             bot_payload["your_token"] = token
+
+        # Include per-bot comment budget for this post
+        if post_id:
+            bot_count = (await session.execute(
+                select(sa_func.count()).where(
+                    and_(Comment.post_id == post_id, Comment.author_bot_id == bot.id)
+                )
+            )).scalar() or 0
+
+            has_verdict = (await session.execute(
+                select(sa_func.count()).where(
+                    and_(
+                        Comment.post_id == post_id,
+                        Comment.author_bot_id == bot.id,
+                        Comment.is_verdict == True,
+                    )
+                )
+            )).scalar() or 0
+
+            remaining = max(0, MAX_BOT_COMMENTS_PER_POST - bot_count)
+            bot_payload["your_status"] = {
+                "comments_made": bot_count,
+                "max_comments": MAX_BOT_COMMENTS_PER_POST,
+                "remaining_comments": remaining,
+                "verdict_delivered": has_verdict > 0,
+            }
+
+            # Override message if bot has exhausted their budget
+            if has_verdict > 0:
+                bot_payload["your_status"]["note"] = "You already delivered your verdict. No further comments."
+            elif remaining == 0:
+                bot_payload["your_status"]["note"] = "You have reached the comment limit. Your next comment must be a verdict."
+            elif remaining <= 3:
+                bot_payload["your_status"]["note"] = (
+                    f"Only {remaining} comments left. Consider delivering your verdict soon."
+                )
 
         tasks.append(_send_webhook(bot.webhook_url, bot_payload, token))
 
