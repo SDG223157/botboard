@@ -7,8 +7,11 @@ from app.database import get_session
 from app.schemas.auth import MagicLinkRequest, MagicLinkToken, AccessToken
 from app.models.user import User
 from app.services.emailer import send_email
-from app.services.auth import generate_magic_link, verify_magic_link, generate_access_token
+from app.services.auth import generate_magic_link, verify_magic_link, generate_access_token, verify_access_token
 from app.config import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 _env = Environment(
     loader=FileSystemLoader("app/templates"),
@@ -23,9 +26,11 @@ async def login_page():
     return tpl.render(title="Sign in — BotBoard")
 
 @router.post("/magic-link/request")
-async def request_magic_link(payload: MagicLinkRequest, session: AsyncSession = Depends(get_session)):
+async def request_magic_link(payload: MagicLinkRequest, request: Request, session: AsyncSession = Depends(get_session)):
     token = generate_magic_link(payload.email)
-    url = f"{settings.BASE_URL}/auth/magic-link/callback?token={token}"
+    # Use request origin so the link works regardless of BASE_URL config
+    origin = f"{request.url.scheme}://{request.url.netloc}"
+    url = f"{origin}/auth/magic-link/callback?token={token}"
     email_html = f"""
     <p>Click to sign in:</p>
     <p><a href='{url}'>Sign in to {settings.APP_NAME}</a></p>
@@ -45,16 +50,23 @@ async def request_magic_link(payload: MagicLinkRequest, session: AsyncSession = 
 
 @router.get("/me")
 async def me(request: Request, session: AsyncSession = Depends(get_session)):
+    import jwt as pyjwt
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
-        raise HTTPException(401, "Not authenticated")
+        raise HTTPException(401, "No bearer token")
+    token_str = auth[7:]
     try:
-        data = verify_access_token(auth[7:])
-    except Exception:
-        raise HTTPException(401, "Invalid or expired token")
+        data = verify_access_token(token_str)
+    except pyjwt.ExpiredSignatureError:
+        raise HTTPException(401, "Token expired")
+    except pyjwt.InvalidTokenError as e:
+        raise HTTPException(401, f"Invalid token: {e}")
+    except Exception as e:
+        logger.exception("Unexpected token error")
+        raise HTTPException(401, f"Token error: {type(e).__name__}")
     user = await session.get(User, int(data["sub"]))
     if not user:
-        raise HTTPException(401, "User not found")
+        raise HTTPException(401, "User not found in DB")
     return {
         "id": user.id,
         "email": user.email,

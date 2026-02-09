@@ -25,7 +25,12 @@
           const res = await fetch('/auth/me', {
             headers: { 'Authorization': 'Bearer ' + token }
           });
-          if (!res.ok) { localStorage.removeItem('access_token'); return; }
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            console.warn('auth/me:', res.status, err.detail || err);
+            localStorage.removeItem('access_token');
+            return;
+          }
           const user = await res.json();
           const nav = document.getElementById('nav');
           nav.innerHTML =
