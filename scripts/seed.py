@@ -2,8 +2,7 @@ import asyncio
 from sqlalchemy import select
 from app.config import settings
 from app.database import engine, async_session, Base
-from app.models.channel import Channel
-from app.models.user import User
+from app.models import Channel, User  # noqa – registers all models
 
 DEFAULT_CHANNELS = [
     ("general", "General"),

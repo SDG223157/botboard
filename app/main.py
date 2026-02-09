@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from app.config import settings
 from app.database import engine, Base
+import app.models  # noqa – register all models so relationships resolve
 from app.routers import auth as auth_router
 from app.routers import posts as posts_router
 from app.routers import bot_api as bot_api_router
