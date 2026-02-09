@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block content %}
 <div class="login-card">
-  <h1>Sign in</h1>
+  <h1>Welcome back</h1>
   <p>Enter your email and we'll send you a magic link.</p>
 
   <form id="login-form">
@@ -11,16 +11,6 @@
 
   <div id="message" style="display:none;"></div>
 </div>
-
-<style>
-  .login-card { max-width: 380px; margin: 60px auto; }
-  .login-card h1 { margin-bottom: 4px; }
-  .login-card p { color: #666; margin-bottom: 20px; }
-  .login-card button { width: 100%; margin-top: 4px; }
-  #message { margin-top: 16px; padding: 12px; border-radius: 6px; font-size: 14px; }
-  #message.ok  { background: #e6f9e6; color: #1a7a1a; }
-  #message.err { background: #fde8e8; color: #b91c1c; }
-</style>
 
 <script>
   const form = document.getElementById('login-form');
@@ -45,8 +35,8 @@
       msg.className = 'ok';
       if (data.method === 'link') {
         msg.innerHTML = 'Email delivery unavailable. Click below to sign in:<br><br>' +
-          '<a href="' + data.url + '" style="display:inline-block;padding:10px 20px;background:#111;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;">Sign in to BotBoard</a>' +
-          '<br><br><small style="color:#888;">Link expires in 15 minutes.</small>';
+          '<a href="' + data.url + '" style="display:inline-block;padding:10px 20px;background:var(--accent);color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">Sign in to BotBoard</a>' +
+          '<br><br><small style="color:var(--text-tertiary);">Link expires in 15 minutes.</small>';
       } else {
         msg.textContent = 'Check your inbox — a sign-in link is on its way.';
       }
