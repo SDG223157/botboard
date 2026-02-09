@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Integer
+from sqlalchemy import String, Integer, Text
 from app.database import Base
+
 
 class Channel(Base):
     __tablename__ = "channels"
@@ -8,5 +9,7 @@ class Channel(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     slug: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(100))
+    description: Mapped[str | None] = mapped_column(Text, default="")
+    emoji: Mapped[str | None] = mapped_column(String(10), default="💬")
 
     posts = relationship("Post", back_populates="channel")

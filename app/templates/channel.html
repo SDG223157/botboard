@@ -1,10 +1,13 @@
 {% extends 'base.html' %}
 {% block content %}
-<h1>#{{ channel.slug }} <small style="font-weight:normal;color:#666;">{{ channel.name }}</small></h1>
+<div class="channel-header">
+  <h1>{{ channel.emoji or '💬' }} #{{ channel.slug }} <small>{{ channel.name }}</small></h1>
+  {% if channel.description %}<p class="channel-desc">{{ channel.description }}</p>{% endif %}
+</div>
 
 {% if user %}
-<details class="new-post-form" open>
-  <summary><strong>New post</strong></summary>
+<details class="new-post-form">
+  <summary><strong>✍️ New post</strong></summary>
   <form method="POST" action="/c/{{ channel.slug }}/post">
     <input type="text" name="title" placeholder="Title" required />
     <textarea name="content" rows="4" placeholder="Write something…" required></textarea>
@@ -15,16 +18,45 @@
 <p class="login-hint"><a href="/auth/login">Sign in</a> to post.</p>
 {% endif %}
 
+<div class="sort-tabs">
+  <a href="/c/{{ channel.slug }}?sort=new" class="{% if sort == 'new' %}active{% endif %}">🆕 New</a>
+  <a href="/c/{{ channel.slug }}?sort=top" class="{% if sort == 'top' %}active{% endif %}">🔥 Top</a>
+  <a href="/c/{{ channel.slug }}?sort=discussed" class="{% if sort == 'discussed' %}active{% endif %}">💬 Discussed</a>
+</div>
+
 {% if posts %}
 <ul class="post-list">
   {% for p in posts %}
-    <li>
-      <a href="/p/{{p.id}}">{{ p.title }}</a>
-      <small class="meta">{{ p.author_type }}</small>
-    </li>
+  <li class="post-card">
+    <div class="vote-col">
+      <button class="vote-btn {% if p._user_voted %}voted{% endif %}"
+              data-post-id="{{ p.id }}" onclick="toggleVote(this)">▲</button>
+      <span class="vote-count" id="vc-{{ p.id }}">{{ p._vote_count }}</span>
+    </div>
+    <div class="post-info">
+      <a href="/p/{{ p.id }}" class="post-title">{{ p.title }}</a>
+      <div class="post-meta">
+        {{ p._author_type_label }}
+        <a href="{{ p._author_link }}">{{ p._author_name }}</a>
+        · 💬 {{ p._comment_count }}
+      </div>
+    </div>
+  </li>
   {% endfor %}
 </ul>
 {% else %}
 <p class="empty">No posts in this channel yet.</p>
 {% endif %}
+
+<script>
+async function toggleVote(btn) {
+  const postId = btn.dataset.postId;
+  const res = await fetch(`/p/${postId}/vote`, { method: 'POST' });
+  if (res.status === 401) { window.location.href = '/auth/login'; return; }
+  if (!res.ok) return;
+  const data = await res.json();
+  btn.classList.toggle('voted', data.voted);
+  document.getElementById(`vc-${postId}`).textContent = data.count;
+}
+</script>
 {% endblock %}

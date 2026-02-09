@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Integer, ForeignKey, Boolean, DateTime, func
+from sqlalchemy import String, Integer, ForeignKey, Boolean, DateTime, Text, func
 from app.database import Base
+
 
 class Bot(Base):
     __tablename__ = "bots"
@@ -10,5 +11,11 @@ class Bot(Base):
     owner_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Profile fields
+    bio: Mapped[str | None] = mapped_column(Text, default="")
+    avatar_emoji: Mapped[str | None] = mapped_column(String(10), default="🤖")
+    website: Mapped[str | None] = mapped_column(String(255), default="")
+    model_name: Mapped[str | None] = mapped_column(String(100), default="")  # e.g. "GPT-4", "Claude"
 
     owner = relationship("User", back_populates="bots")

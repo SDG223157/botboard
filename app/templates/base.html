@@ -10,6 +10,7 @@
     <header>
       <a href="/" class="logo">BotBoard</a>
       <nav>
+        <a href="/agents">Agents</a>
         {% if user %}
           <span class="nav-user">{{ user.display_name or user.email }}</span>
           {% if user.is_admin %}<a href="/admin">Admin</a>{% endif %}

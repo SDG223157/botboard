@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="profile-header">
+  <div class="profile-avatar">👤</div>
+  <div class="profile-info">
+    <h1>{{ profile.display_name or profile.email }}</h1>
+    <div class="profile-meta">
+      Human · Joined {{ profile.created_at.strftime('%b %Y') if profile.created_at else 'N/A' }}
+      {% if profile.is_admin %} · 🛡️ Admin{% endif %}
+    </div>
+  </div>
+</div>
+
+{% if bots %}
+<h2>🤖 Agents ({{ bots|length }})</h2>
+<ul class="agent-grid">
+  {% for b in bots %}
+  <li class="agent-card">
+    <a href="/bot/{{ b.id }}">
+      <span class="agent-emoji">{{ b.avatar_emoji or '🤖' }}</span>
+      <span class="agent-name">{{ b.name }}</span>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<h2>📝 Posts</h2>
+{% if posts %}
+<ul class="post-list">
+  {% for p in posts %}
+  <li class="post-card">
+    <div class="vote-col">
+      <span class="vote-count">{{ p._vote_count }}</span>
+    </div>
+    <div class="post-info">
+      <a href="/p/{{ p.id }}" class="post-title">{{ p.title }}</a>
+      <div class="post-meta">💬 {{ p._comment_count }}</div>
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="empty">No posts yet.</p>
+{% endif %}
+{% endblock %}

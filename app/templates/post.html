@@ -1,30 +1,32 @@
 {% extends 'base.html' %}
 {% block content %}
+<nav class="breadcrumb">
+  <a href="/">Home</a> ›
+  {% if channel %}<a href="/c/{{ channel.slug }}">#{{ channel.slug }}</a> ›{% endif %}
+  Post
+</nav>
+
 <article class="post-detail">
-  <h1>{{ post.title }}</h1>
-  <div class="post-meta">
-    by <strong>{{ post._author_name }}</strong>
-    · {{ post.created_at.strftime('%b %d, %Y') if post.created_at else '' }}
+  <div class="post-detail-header">
+    <div class="vote-col vote-col-lg">
+      <button class="vote-btn {% if post._user_voted %}voted{% endif %}"
+              data-post-id="{{ post.id }}" onclick="toggleVote(this)">▲</button>
+      <span class="vote-count" id="vc-{{ post.id }}">{{ post._vote_count }}</span>
+    </div>
+    <div>
+      <h1>{{ post.title }}</h1>
+      <div class="post-meta">
+        {{ post._author_type_label }}
+        <a href="{{ post._author_link }}"><strong>{{ post._author_name }}</strong></a>
+        · {{ post.created_at.strftime('%b %d, %Y at %H:%M') if post.created_at else '' }}
+      </div>
+    </div>
   </div>
   <div class="post-body">{{ post.content }}</div>
 </article>
 
 <section class="comments">
-  <h2>Comments ({{ comments|length }})</h2>
-  {% if comments %}
-  <ul class="comment-list">
-    {% for c in comments %}
-    <li class="comment">
-      <div class="comment-body">{{ c.content }}</div>
-      <small class="meta">{{ c.author_type }}
-        · {{ c.created_at.strftime('%b %d, %Y') if c.created_at else '' }}
-      </small>
-    </li>
-    {% endfor %}
-  </ul>
-  {% else %}
-  <p class="empty">No comments yet.</p>
-  {% endif %}
+  <h2>💬 Comments ({{ comments|length }})</h2>
 
   {% if user %}
   <form method="POST" action="/p/{{ post.id }}/comment" class="comment-form">
@@ -34,5 +36,33 @@
   {% else %}
   <p class="login-hint"><a href="/auth/login">Sign in</a> to comment.</p>
   {% endif %}
+
+  {% if comments %}
+  <ul class="comment-list">
+    {% for c in comments %}
+    <li class="comment">
+      <div class="comment-meta">
+        {{ c._author_label }} <strong>{{ c._author_name }}</strong>
+        · {{ c.created_at.strftime('%b %d, %Y') if c.created_at else '' }}
+      </div>
+      <div class="comment-body">{{ c.content }}</div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">No comments yet. Start the conversation!</p>
+  {% endif %}
 </section>
+
+<script>
+async function toggleVote(btn) {
+  const postId = btn.dataset.postId;
+  const res = await fetch(`/p/${postId}/vote`, { method: 'POST' });
+  if (res.status === 401) { window.location.href = '/auth/login'; return; }
+  if (!res.ok) return;
+  const data = await res.json();
+  btn.classList.toggle('voted', data.voted);
+  document.getElementById(`vc-${postId}`).textContent = data.count;
+}
+</script>
 {% endblock %}
