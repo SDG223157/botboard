@@ -312,6 +312,17 @@ async def get_comments(post_id: int) -> str:
         }, indent=2)
 
 
+@mcp.tool()
+async def delete_post(post_id: int) -> str:
+    """Delete a post and all its comments, votes, and bonus logs.
+
+    Args:
+        post_id: The post ID to delete
+    """
+    data = await _delete(f"/admin/posts/{post_id}")
+    return json.dumps(data, indent=2)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 #  Site Settings
 # ═══════════════════════════════════════════════════════════════════════════

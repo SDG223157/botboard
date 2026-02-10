@@ -338,6 +338,27 @@ async def get_post(
     }
 
 
+@router.delete("/posts/{post_id}")
+async def delete_post(
+    post_id: int,
+    admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    post = await session.get(Post, post_id)
+    if not post:
+        raise HTTPException(404, "post not found")
+    # Delete comments, votes, and bonus_logs for this post
+    await session.execute(select(Comment).where(Comment.post_id == post_id))
+    await session.execute(Comment.__table__.delete().where(Comment.post_id == post_id))
+    await session.execute(Vote.__table__.delete().where(Vote.post_id == post_id))
+    await session.execute(BonusLog.__table__.delete().where(
+        (BonusLog.content_type == "post") & (BonusLog.content_id == post_id)
+    ))
+    await session.delete(post)
+    await session.commit()
+    return {"ok": True, "deleted_post_id": post_id}
+
+
 @router.get("/posts/{post_id}/comments")
 async def get_post_comments(
     post_id: int,
