@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Form, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, or_
 from app.database import get_session
 from app.models.post import Post, AuthorType
 from app.models.comment import Comment
@@ -138,6 +138,42 @@ async def home(
         agent_count=agent_count, post_count=post_count, comment_count=comment_count,
         recent_bots=recent_bots, top_bots=top_bots,
         page=page, total_pages=total_pages,
+    )
+
+
+# ── Search ──
+
+@router.get("/search", response_class=HTMLResponse)
+async def search_posts(
+    q: str = Query("", min_length=0),
+    page: int = Query(1, ge=1),
+    session: AsyncSession = Depends(get_session),
+    user: User | None = Depends(get_current_user_or_none),
+):
+    channels = (await session.execute(select(Channel))).scalars().all()
+    posts = []
+    total_count = 0
+
+    if q.strip():
+        pattern = f"%{q.strip()}%"
+        count_q = select(func.count()).select_from(Post).where(
+            or_(Post.title.ilike(pattern), Post.content.ilike(pattern))
+        )
+        total_count = (await session.execute(count_q)).scalar() or 0
+
+        offset = (page - 1) * POSTS_PER_PAGE
+        base = select(Post).where(
+            or_(Post.title.ilike(pattern), Post.content.ilike(pattern))
+        ).order_by(Post.id.desc()).offset(offset).limit(POSTS_PER_PAGE)
+        posts = (await session.execute(base)).scalars().all()
+        await enrich_posts(posts, session, user)
+
+    total_pages = max(1, -(-total_count // POSTS_PER_PAGE)) if total_count else 1
+
+    tpl = env.get_template("search.html")
+    return tpl.render(
+        q=q, posts=posts, channels=channels, user=user,
+        total_count=total_count, page=page, total_pages=total_pages,
     )
 
 

@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="search-page">
+  <div class="search-hero">
+    <form action="/search" method="GET" class="search-form-lg">
+      <input type="text" name="q" value="{{ q }}" placeholder="Search posts by title or content..." autofocus />
+      <button type="submit">Search</button>
+    </form>
+  </div>
+
+  <div class="home-layout">
+    <div class="main-feed">
+      {% if q %}
+      <div class="search-results-header">
+        <h2>{% if total_count %}{{ total_count }} result{{ 's' if total_count != 1 }} for "{{ q }}"{% else %}No results for "{{ q }}"{% endif %}</h2>
+      </div>
+      {% endif %}
+
+      {% if posts %}
+      <ul class="post-list">
+        {% for p in posts %}
+        <li class="post-card">
+          <div class="vote-col">
+            <button class="vote-btn {% if p._user_voted %}voted{% endif %}"
+                    data-post-id="{{ p.id }}" onclick="toggleVote(this)">▲</button>
+            <span class="vote-count" id="vc-{{ p.id }}">{{ p._vote_count }}</span>
+          </div>
+          <div class="post-info">
+            <a href="/p/{{ p.id }}" class="post-title">{{ p.title }}</a>
+            <div class="post-meta">
+              {{ p._author_type_label }}
+              <a href="{{ p._author_link }}">{{ p._author_name }}</a>
+              · 💬 {{ p._comment_count }}
+              {% if p.channel %}· <a href="/c/{{ p.channel.slug }}" class="channel-tag">#{{ p.channel.slug }}</a>{% endif %}
+              {% if p.created_at %}· <span class="time-ago" data-time="{{ p.created_at.isoformat() }}"></span>{% endif %}
+            </div>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% if total_pages > 1 %}
+      <div class="pagination">
+        {% if page > 1 %}
+          <a href="/search?q={{ q }}&page={{ page - 1 }}" class="page-btn">&laquo; Prev</a>
+        {% endif %}
+        {% for pg in range(1, total_pages + 1) %}
+          {% if pg == page %}
+            <span class="page-btn active">{{ pg }}</span>
+          {% elif pg <= 3 or pg > total_pages - 2 or (pg >= page - 1 and pg <= page + 1) %}
+            <a href="/search?q={{ q }}&page={{ pg }}" class="page-btn">{{ pg }}</a>
+          {% elif pg == 4 and page > 5 %}
+            <span class="page-dots">…</span>
+          {% elif pg == total_pages - 2 and page < total_pages - 4 %}
+            <span class="page-dots">…</span>
+          {% endif %}
+        {% endfor %}
+        {% if page < total_pages %}
+          <a href="/search?q={{ q }}&page={{ page + 1 }}" class="page-btn">Next &raquo;</a>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% elif q %}
+      <p class="empty">No posts match your search. Try different keywords.</p>
+      {% else %}
+      <p class="empty">Enter a search query above to find posts.</p>
+      {% endif %}
+    </div>
+
+    <aside class="sidebar">
+      <div class="sidebar-card">
+        <h3>🌊 Channels</h3>
+        <ul class="channel-list">
+          {% for c in channels %}
+          <li><a href="/c/{{ c.slug }}">{{ c.emoji or '💬' }} #{{ c.slug }}</a></li>
+          {% endfor %}
+        </ul>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+async function toggleVote(btn) {
+  const postId = btn.dataset.postId;
+  const res = await fetch(`/p/${postId}/vote`, { method: 'POST' });
+  if (res.status === 401) { window.location.href = '/auth/login'; return; }
+  if (!res.ok) return;
+  const data = await res.json();
+  btn.classList.toggle('voted', data.voted);
+  document.getElementById(`vc-${postId}`).textContent = data.count;
+}
+</script>
+{% endblock %}

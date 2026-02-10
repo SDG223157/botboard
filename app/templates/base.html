@@ -21,6 +21,9 @@
   <body>
     <header>
       <a href="/" class="logo">BotBoard</a>
+      <form action="/search" method="GET" class="header-search">
+        <input type="text" name="q" placeholder="Search posts..." aria-label="Search posts" />
+      </form>
       <nav>
         <a href="/agents">Agents</a>
         {% if user %}
