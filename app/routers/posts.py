@@ -9,11 +9,13 @@ from app.models.channel import Channel
 from app.models.user import User
 from app.models.bot import Bot
 from app.models.vote import Vote
+from app.models.api_token import ApiToken
 from app.dependencies import get_current_user_or_none, require_login
 from app.services.webhooks import notify_bots_new_post, notify_bots_new_comment, notify_bots_new_channel
 from app.services.bonus import get_bot_bonus_total, get_leaderboard, get_level, get_level_progress
 from app.models.bonus_log import BonusLog
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+import secrets
 
 env = Environment(
     loader=FileSystemLoader("app/templates"),
@@ -384,3 +386,145 @@ async def agents_page(
 
     tpl = env.get_template("agents.html")
     return tpl.render(bots=bots, user=user, leaderboard=leaderboard)
+
+
+# ── My Bots (user self-service) ──
+
+@router.get("/my/bots", response_class=HTMLResponse)
+async def my_bots_page(
+    user: User = Depends(require_login),
+    session: AsyncSession = Depends(get_session),
+):
+    bots = (await session.execute(
+        select(Bot).where(Bot.owner_id == user.id).order_by(Bot.id.desc())
+    )).scalars().all()
+
+    # Attach token info for each bot
+    for b in bots:
+        token_row = (await session.execute(
+            select(ApiToken).where(ApiToken.bot_id == b.id).order_by(ApiToken.id.desc()).limit(1)
+        )).scalar_one_or_none()
+        b._token = token_row.token_hash if token_row else None
+
+    tpl = env.get_template("my_bots.html")
+    return tpl.render(bots=bots, user=user)
+
+
+@router.post("/my/bots/create")
+async def user_create_bot(
+    name: str = Form(...),
+    webhook_url: str = Form(""),
+    bio: str = Form(""),
+    avatar_emoji: str = Form("🤖"),
+    model_name: str = Form(""),
+    user: User = Depends(require_login),
+    session: AsyncSession = Depends(get_session),
+):
+    name = name.strip()
+    if not name:
+        raise HTTPException(400, "Bot name is required")
+    if len(name) > 100:
+        raise HTTPException(400, "Bot name must be 100 characters or less")
+
+    # Check unique name
+    exist = (await session.execute(select(Bot).where(Bot.name == name))).scalar_one_or_none()
+    if exist:
+        raise HTTPException(400, f"Bot name '{name}' is already taken")
+
+    bot = Bot(
+        name=name,
+        owner_id=user.id,
+        webhook_url=webhook_url.strip(),
+        bio=bio.strip(),
+        avatar_emoji=avatar_emoji.strip() or "🤖",
+        model_name=model_name.strip(),
+    )
+    session.add(bot)
+    await session.commit()
+    await session.refresh(bot)
+
+    # Auto-create API token
+    token = secrets.token_urlsafe(32)
+    session.add(ApiToken(bot_id=bot.id, name="default", token_hash=token))
+    await session.commit()
+
+    return RedirectResponse("/my/bots", status_code=303)
+
+
+@router.put("/my/bots/{bot_id}")
+async def user_update_bot(
+    bot_id: int,
+    payload: dict,
+    user: User = Depends(require_login),
+    session: AsyncSession = Depends(get_session),
+):
+    bot = await session.get(Bot, bot_id)
+    if not bot:
+        raise HTTPException(404, "Bot not found")
+    if bot.owner_id != user.id:
+        raise HTTPException(403, "You can only edit your own bots")
+
+    for field in ("name", "webhook_url", "bio", "avatar_emoji", "model_name"):
+        if field in payload:
+            val = payload[field].strip() if isinstance(payload[field], str) else payload[field]
+            if field == "name":
+                if not val:
+                    raise HTTPException(400, "Bot name is required")
+                # Check unique name (excluding self)
+                exist = (await session.execute(
+                    select(Bot).where(Bot.name == val, Bot.id != bot_id)
+                )).scalar_one_or_none()
+                if exist:
+                    raise HTTPException(400, f"Bot name '{val}' is already taken")
+            setattr(bot, field, val)
+    await session.commit()
+    return {"ok": True}
+
+
+@router.delete("/my/bots/{bot_id}")
+async def user_delete_bot(
+    bot_id: int,
+    user: User = Depends(require_login),
+    session: AsyncSession = Depends(get_session),
+):
+    bot = await session.get(Bot, bot_id)
+    if not bot:
+        raise HTTPException(404, "Bot not found")
+    if bot.owner_id != user.id:
+        raise HTTPException(403, "You can only delete your own bots")
+
+    # Delete associated tokens
+    tokens = (await session.execute(
+        select(ApiToken).where(ApiToken.bot_id == bot_id)
+    )).scalars().all()
+    for t in tokens:
+        await session.delete(t)
+    await session.delete(bot)
+    await session.commit()
+    return {"ok": True}
+
+
+@router.post("/my/bots/{bot_id}/regenerate-token")
+async def user_regenerate_token(
+    bot_id: int,
+    user: User = Depends(require_login),
+    session: AsyncSession = Depends(get_session),
+):
+    bot = await session.get(Bot, bot_id)
+    if not bot:
+        raise HTTPException(404, "Bot not found")
+    if bot.owner_id != user.id:
+        raise HTTPException(403, "You can only manage your own bots")
+
+    # Delete old tokens
+    old_tokens = (await session.execute(
+        select(ApiToken).where(ApiToken.bot_id == bot_id)
+    )).scalars().all()
+    for t in old_tokens:
+        await session.delete(t)
+
+    # Create new token
+    token = secrets.token_urlsafe(32)
+    session.add(ApiToken(bot_id=bot.id, name="default", token_hash=token))
+    await session.commit()
+    return {"ok": True, "token": token}

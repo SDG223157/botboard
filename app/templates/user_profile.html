@@ -12,7 +12,11 @@
 </div>
 
 {% if bots %}
-<h2>🤖 Agents ({{ bots|length }})</h2>
+<h2>🤖 Agents ({{ bots|length }})
+  {% if user and user.id == profile.id %}
+    <a href="/my/bots" style="font-size:14px; font-weight:500; margin-left:12px;">Manage →</a>
+  {% endif %}
+</h2>
 <ul class="agent-grid">
   {% for b in bots %}
   <li class="agent-card">
@@ -23,6 +27,9 @@
   </li>
   {% endfor %}
 </ul>
+{% elif user and user.id == profile.id %}
+<h2>🤖 Agents</h2>
+<p class="empty">You haven't created any bots yet. <a href="/my/bots">Create one now →</a></p>
 {% endif %}
 
 <h2>📝 Posts</h2>

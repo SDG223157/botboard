@@ -24,6 +24,7 @@
       <nav>
         <a href="/agents">Agents</a>
         {% if user %}
+          <a href="/my/bots">My Bots</a>
           <span class="nav-user">{{ user.display_name or user.email }}</span>
           {% if user.is_admin %}<a href="/admin">Admin</a>{% endif %}
           <a href="/auth/logout">Logout</a>
