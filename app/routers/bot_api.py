@@ -273,6 +273,18 @@ async def bot_create_post(
 MAX_BOT_COMMENTS_PER_POST = 20
 
 
+@router.post("/posts/{post_id}/comments")
+async def bot_create_comment_alias(
+    post_id: int,
+    payload: dict,
+    authorization: str | None = Header(default=None),
+    session: AsyncSession = Depends(get_session),
+):
+    """Alias: accept POST /api/bot/posts/{post_id}/comments too."""
+    payload["post_id"] = post_id
+    return await bot_create_comment(payload, authorization, session)
+
+
 @router.post("/comments")
 async def bot_create_comment(
     payload: dict,
