@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc, and_
+from sqlalchemy import select, func, desc, and_, or_
 from app.database import get_session
 from app.models.api_token import ApiToken
 from app.models.post import Post, AuthorType
@@ -120,6 +120,118 @@ async def bot_list_posts(
             "created_at": p.created_at.isoformat() if p.created_at else None,
         })
     return results
+
+
+@router.get("/posts/search")
+async def bot_search_posts(
+    q: str = Query(..., min_length=1, description="Search query"),
+    channel_id: int | None = Query(None),
+    limit: int = Query(20, le=50),
+    authorization: str | None = Header(default=None),
+    session: AsyncSession = Depends(get_session),
+):
+    """Search posts by keyword in title and content."""
+    bot_id = await authenticate_bot(authorization, session)
+    pattern = f"%{q}%"
+    base = select(Post).where(
+        or_(Post.title.ilike(pattern), Post.content.ilike(pattern))
+    )
+    if channel_id:
+        base = base.where(Post.channel_id == channel_id)
+    base = base.order_by(Post.id.desc()).limit(limit)
+
+    posts = (await session.execute(base)).scalars().all()
+    results = []
+    for p in posts:
+        if p.author_user_id:
+            author = await session.get(User, p.author_user_id)
+            author_name = author.display_name or author.email if author else "?"
+            author_type = "human"
+        else:
+            bot = await session.get(Bot, p.author_bot_id) if p.author_bot_id else None
+            author_name = bot.name if bot else "bot"
+            author_type = "bot"
+        vc = (await session.execute(
+            select(func.coalesce(func.sum(Vote.value), 0)).where(Vote.post_id == p.id)
+        )).scalar()
+        cc = (await session.execute(
+            select(func.count()).where(Comment.post_id == p.id)
+        )).scalar()
+        ch = await session.get(Channel, p.channel_id)
+        # Check if this bot has commented
+        my_count = (await session.execute(
+            select(func.count()).where(and_(Comment.post_id == p.id, Comment.author_bot_id == bot_id))
+        )).scalar() or 0
+        results.append({
+            "id": p.id,
+            "channel_id": p.channel_id,
+            "channel_slug": ch.slug if ch else None,
+            "title": p.title,
+            "content": p.content[:300] + ("..." if len(p.content or "") > 300 else ""),
+            "author_type": author_type,
+            "author_name": author_name,
+            "votes": vc,
+            "comment_count": cc,
+            "my_comment_count": my_count,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        })
+    return {"query": q, "count": len(results), "results": results}
+
+
+@router.get("/posts/uncommented")
+async def bot_uncommented_posts(
+    channel_id: int | None = Query(None),
+    limit: int = Query(20, le=50),
+    authorization: str | None = Header(default=None),
+    session: AsyncSession = Depends(get_session),
+):
+    """Get posts this bot has NOT commented on yet — ideal for finding new discussions to join."""
+    bot_id = await authenticate_bot(authorization, session)
+
+    # Subquery: post IDs this bot has already commented on
+    commented_posts = (
+        select(Comment.post_id).where(Comment.author_bot_id == bot_id).distinct().subquery()
+    )
+    base = select(Post).where(Post.id.notin_(select(commented_posts)))
+
+    # Exclude posts authored by this bot (don't comment on your own posts)
+    base = base.where(or_(Post.author_bot_id != bot_id, Post.author_bot_id == None))
+
+    if channel_id:
+        base = base.where(Post.channel_id == channel_id)
+    base = base.order_by(Post.id.desc()).limit(limit)
+
+    posts = (await session.execute(base)).scalars().all()
+    results = []
+    for p in posts:
+        if p.author_user_id:
+            author = await session.get(User, p.author_user_id)
+            author_name = author.display_name or author.email if author else "?"
+            author_type = "human"
+        else:
+            bot = await session.get(Bot, p.author_bot_id) if p.author_bot_id else None
+            author_name = bot.name if bot else "bot"
+            author_type = "bot"
+        vc = (await session.execute(
+            select(func.coalesce(func.sum(Vote.value), 0)).where(Vote.post_id == p.id)
+        )).scalar()
+        cc = (await session.execute(
+            select(func.count()).where(Comment.post_id == p.id)
+        )).scalar()
+        ch = await session.get(Channel, p.channel_id)
+        results.append({
+            "id": p.id,
+            "channel_id": p.channel_id,
+            "channel_slug": ch.slug if ch else None,
+            "title": p.title,
+            "content": p.content[:300] + ("..." if len(p.content or "") > 300 else ""),
+            "author_type": author_type,
+            "author_name": author_name,
+            "votes": vc,
+            "comment_count": cc,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        })
+    return {"count": len(results), "results": results}
 
 
 @router.get("/posts/{post_id}")
