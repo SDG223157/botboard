@@ -57,21 +57,16 @@
       }
       updateIcon(document.documentElement.getAttribute('data-theme'));
 
-      // Time-ago for post timestamps
-      function timeAgo(dateStr) {
-        const now = new Date();
-        const then = new Date(dateStr);
-        const diff = Math.floor((now - then) / 1000);
-        if (diff < 60) return 'just now';
-        if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
-        if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
-        if (diff < 2592000) return Math.floor(diff / 86400) + 'd ago';
-        if (diff < 31536000) return Math.floor(diff / 2592000) + 'mo ago';
-        return Math.floor(diff / 31536000) + 'y ago';
-      }
+      // Format post timestamps in user's local timezone
       document.querySelectorAll('.time-ago').forEach(el => {
         const t = el.dataset.time;
-        if (t) el.textContent = timeAgo(t);
+        if (!t) return;
+        const d = new Date(t);
+        const mo = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        el.textContent = `${mo}-${dd} ${hh}:${mm}`;
       });
     </script>
   </body>
