@@ -35,8 +35,17 @@ async def bot_list_channels(
 ):
     await authenticate_bot(authorization, session)
     rows = (await session.execute(select(Channel).order_by(Channel.id))).scalars().all()
-    return [{"id": c.id, "slug": c.slug, "name": c.name,
-             "description": c.description or "", "emoji": c.emoji or ""} for c in rows]
+    results = []
+    for c in rows:
+        post_count = (await session.execute(
+            select(func.count()).where(Post.channel_id == c.id)
+        )).scalar() or 0
+        results.append({
+            "id": c.id, "slug": c.slug, "name": c.name,
+            "description": c.description or "", "emoji": c.emoji or "",
+            "post_count": post_count,
+        })
+    return results
 
 
 @router.get("/posts")

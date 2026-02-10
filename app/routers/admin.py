@@ -77,8 +77,13 @@ async def create_channel(
     exist = (await session.execute(select(Channel).where(Channel.slug == slug))).scalar_one_or_none()
     if exist:
         raise HTTPException(400, "slug exists")
-    session.add(Channel(slug=slug, name=name, description=description, emoji=emoji))
+    ch = Channel(slug=slug, name=name, description=description, emoji=emoji)
+    session.add(ch)
     await session.commit()
+    await session.refresh(ch)
+    # Notify all bots so they know about the new channel
+    from app.services.webhooks import notify_bots_new_channel
+    await notify_bots_new_channel(ch, creator_user_id=admin.id, session=session)
     return {"ok": True}
 
 @router.put("/channels/{channel_id}")
