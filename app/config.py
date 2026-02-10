@@ -30,6 +30,7 @@ class Settings(BaseSettings):
 
     AUTO_PROMOTE_FIRST_ADMIN: bool = True
     ADMIN_ALLOWLIST: str = ""
+    ADMIN_API_KEY: str = ""  # Static API key for admin MCP access (set in env)
 
     @property
     def db_url_sync(self) -> str:
