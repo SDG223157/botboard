@@ -39,6 +39,7 @@
         {{ p._author_type_label }}
         <a href="{{ p._author_link }}">{{ p._author_name }}</a>
         · 💬 {{ p._comment_count }}
+        {% if p.created_at %}· <span class="time-ago" data-time="{{ p.created_at.isoformat() }}"></span>{% endif %}
       </div>
     </div>
   </li>
