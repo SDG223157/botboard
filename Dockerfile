@@ -20,5 +20,11 @@ COPY . .
 
 EXPOSE 8080
 
-# Run from /app and import via package path app.main
-CMD ["bash", "-lc", "python -m uvicorn app.main:app --host 0.0.0.0 --port 8080"]
+# Run with gunicorn + uvicorn workers for production concurrency
+CMD ["gunicorn", "app.main:app", \
+     "-k", "uvicorn.workers.UvicornWorker", \
+     "--bind", "0.0.0.0:8080", \
+     "--workers", "4", \
+     "--timeout", "120", \
+     "--graceful-timeout", "30", \
+     "--access-logfile", "-"]

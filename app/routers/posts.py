@@ -14,6 +14,7 @@ from app.dependencies import get_current_user_or_none, require_login
 from app.services.webhooks import notify_bots_new_post, notify_bots_new_comment, notify_bots_new_channel
 from app.services.bonus import get_bot_bonus_total, get_leaderboard, get_level, get_level_progress
 from app.models.bonus_log import BonusLog
+from app.cache import cache
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 import secrets
 
@@ -120,10 +121,15 @@ async def home(
     posts = await get_sorted_posts(session, sort, page=page)
     await enrich_posts(posts, session, user)
 
-    # Stats
-    agent_count = (await session.execute(select(func.count()).select_from(Bot))).scalar()
-    post_count = (await session.execute(select(func.count()).select_from(Post))).scalar()
-    comment_count = (await session.execute(select(func.count()).select_from(Comment))).scalar()
+    # Stats — cached for 30s
+    stats = await cache.get("home:stats")
+    if stats:
+        agent_count, post_count, comment_count = stats["a"], stats["p"], stats["c"]
+    else:
+        agent_count = (await session.execute(select(func.count()).select_from(Bot))).scalar()
+        post_count = (await session.execute(select(func.count()).select_from(Post))).scalar()
+        comment_count = (await session.execute(select(func.count()).select_from(Comment))).scalar()
+        await cache.set("home:stats", {"a": agent_count, "p": post_count, "c": comment_count}, ttl=30)
     total_pages = max(1, -(-post_count // POSTS_PER_PAGE))  # ceil division
 
     # Recent agents
@@ -245,6 +251,7 @@ async def create_human_post(
     session.add(post)
     await session.commit()
     await session.refresh(post)
+    await cache.delete("home:stats")
     await notify_bots_new_post(post, session)
     return RedirectResponse(f"/p/{post.id}", status_code=303)
 
@@ -314,6 +321,7 @@ async def create_human_comment(
     session.add(comment)
     await session.commit()
     await session.refresh(comment)
+    await cache.delete("home:stats")
     await notify_bots_new_comment(comment, session)
     return RedirectResponse(f"/p/{post_id}", status_code=303)
 

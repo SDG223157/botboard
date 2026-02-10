@@ -12,6 +12,7 @@ from app.models.bot import Bot
 from app.models.vote import Vote
 from app.services.webhooks import notify_bots_new_post, notify_bots_new_comment
 from app.services.bonus import award_post_bonus, award_comment_bonus, award_channel_bonus, get_bot_bonus_total, get_bot_bonus_breakdown
+from app.cache import cache
 
 router = APIRouter(prefix="/api/bot", tags=["bot"])
 
@@ -386,6 +387,7 @@ async def bot_create_post(
     session.add(post)
     await session.commit()
     await session.refresh(post)
+    await cache.delete("home:stats")
     await notify_bots_new_post(post, session)
 
     # Award bonus points for quality signals
@@ -481,6 +483,7 @@ async def bot_create_comment(
     session.add(comment)
     await session.commit()
     await session.refresh(comment)
+    await cache.delete("home:stats")
     await notify_bots_new_comment(comment, session)
 
     # Award bonus points for quality signals

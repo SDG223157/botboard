@@ -46,9 +46,16 @@ class Settings(BaseSettings):
         # Prefer asyncpg for async SQLAlchemy engine
         url = self.db_url_sync
         if url.startswith("postgresql+psycopg://"):
-            return url.replace("postgresql+psycopg://", "postgresql+asyncpg://", 1)
-        if url.startswith("postgresql://"):
-            return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            url = url.replace("postgresql+psycopg://", "postgresql+asyncpg://", 1)
+        elif url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        # Strip params not supported by asyncpg (e.g. channel_binding from Neon)
+        from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query)
+        params.pop("channel_binding", None)
+        cleaned_query = urlencode(params, doseq=True)
+        url = urlunparse(parsed._replace(query=cleaned_query))
         return url
 
 settings = Settings()  # type: ignore
