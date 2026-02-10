@@ -66,8 +66,11 @@ async def enrich_posts(posts: list[Post], session: AsyncSession, current_user: U
     return posts
 
 
-async def get_sorted_posts(session: AsyncSession, sort: str, channel_id: int | None = None, limit: int = 50):
-    """Get posts sorted by new/top/discussed."""
+POSTS_PER_PAGE = 20
+
+
+async def get_sorted_posts(session: AsyncSession, sort: str, channel_id: int | None = None, page: int = 1):
+    """Get posts sorted by new/top/discussed with pagination."""
     base = select(Post)
     if channel_id:
         base = base.where(Post.channel_id == channel_id)
@@ -92,7 +95,16 @@ async def get_sorted_posts(session: AsyncSession, sort: str, channel_id: int | N
     else:  # "new" (default)
         base = base.order_by(Post.id.desc())
 
-    return (await session.execute(base.limit(limit))).scalars().all()
+    offset = (page - 1) * POSTS_PER_PAGE
+    return (await session.execute(base.offset(offset).limit(POSTS_PER_PAGE))).scalars().all()
+
+
+async def get_post_count(session: AsyncSession, channel_id: int | None = None) -> int:
+    """Get total post count for pagination."""
+    q = select(func.count()).select_from(Post)
+    if channel_id:
+        q = q.where(Post.channel_id == channel_id)
+    return (await session.execute(q)).scalar() or 0
 
 
 # ── Landing / Home ──
@@ -100,17 +112,19 @@ async def get_sorted_posts(session: AsyncSession, sort: str, channel_id: int | N
 @router.get("/", response_class=HTMLResponse)
 async def home(
     sort: str = Query("new", regex="^(new|top|discussed)$"),
+    page: int = Query(1, ge=1),
     session: AsyncSession = Depends(get_session),
     user: User | None = Depends(get_current_user_or_none),
 ):
     channels = (await session.execute(select(Channel))).scalars().all()
-    posts = await get_sorted_posts(session, sort)
+    posts = await get_sorted_posts(session, sort, page=page)
     await enrich_posts(posts, session, user)
 
     # Stats
     agent_count = (await session.execute(select(func.count()).select_from(Bot))).scalar()
     post_count = (await session.execute(select(func.count()).select_from(Post))).scalar()
     comment_count = (await session.execute(select(func.count()).select_from(Comment))).scalar()
+    total_pages = max(1, -(-post_count // POSTS_PER_PAGE))  # ceil division
 
     # Recent agents
     recent_bots = (await session.execute(select(Bot).order_by(Bot.id.desc()).limit(5))).scalars().all()
@@ -123,6 +137,7 @@ async def home(
         channels=channels, posts=posts, user=user, sort=sort,
         agent_count=agent_count, post_count=post_count, comment_count=comment_count,
         recent_bots=recent_bots, top_bots=top_bots,
+        page=page, total_pages=total_pages,
     )
 
 
@@ -158,16 +173,19 @@ async def create_channel(
 async def channel_page(
     slug: str,
     sort: str = Query("new", regex="^(new|top|discussed)$"),
+    page: int = Query(1, ge=1),
     session: AsyncSession = Depends(get_session),
     user: User | None = Depends(get_current_user_or_none),
 ):
     ch = (await session.execute(select(Channel).where(Channel.slug == slug))).scalar_one_or_none()
     if not ch:
         raise HTTPException(404, "channel not found")
-    posts = await get_sorted_posts(session, sort, channel_id=ch.id)
+    posts = await get_sorted_posts(session, sort, channel_id=ch.id, page=page)
     await enrich_posts(posts, session, user)
+    total = await get_post_count(session, channel_id=ch.id)
+    total_pages = max(1, -(-total // POSTS_PER_PAGE))
     tpl = env.get_template("channel.html")
-    return tpl.render(channel=ch, posts=posts, user=user, sort=sort)
+    return tpl.render(channel=ch, posts=posts, user=user, sort=sort, page=page, total_pages=total_pages)
 
 
 @router.post("/c/{slug}/post")

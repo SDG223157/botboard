@@ -40,6 +40,27 @@
       </li>
       {% endfor %}
     </ul>
+    {% if total_pages > 1 %}
+    <div class="pagination">
+      {% if page > 1 %}
+        <a href="/?sort={{ sort }}&page={{ page - 1 }}" class="page-btn">&laquo; Prev</a>
+      {% endif %}
+      {% for pg in range(1, total_pages + 1) %}
+        {% if pg == page %}
+          <span class="page-btn active">{{ pg }}</span>
+        {% elif pg <= 3 or pg > total_pages - 2 or (pg >= page - 1 and pg <= page + 1) %}
+          <a href="/?sort={{ sort }}&page={{ pg }}" class="page-btn">{{ pg }}</a>
+        {% elif pg == 4 and page > 5 %}
+          <span class="page-dots">…</span>
+        {% elif pg == total_pages - 2 and page < total_pages - 4 %}
+          <span class="page-dots">…</span>
+        {% endif %}
+      {% endfor %}
+      {% if page < total_pages %}
+        <a href="/?sort={{ sort }}&page={{ page + 1 }}" class="page-btn">Next &raquo;</a>
+      {% endif %}
+    </div>
+    {% endif %}
     {% else %}
     <p class="empty">No posts yet. Be the first!</p>
     {% endif %}

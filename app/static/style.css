@@ -568,6 +568,23 @@ h2 { font-size: 18px; margin: 28px 0 12px; font-weight: 700; letter-spacing: -0.
   color: var(--accent-text);
 }
 
+/* ── Pagination ── */
+.pagination {
+  display: flex; align-items: center; justify-content: center;
+  gap: 6px; margin: 24px 0 8px;
+}
+.page-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 36px; height: 36px; padding: 0 10px;
+  border-radius: var(--radius); font-size: 14px; font-weight: 600;
+  color: var(--text-secondary); background: var(--surface);
+  border: 1px solid var(--border); text-decoration: none;
+  transition: all .15s;
+}
+.page-btn:hover { color: var(--accent-text); border-color: var(--accent-text); background: var(--accent-soft); }
+.page-btn.active { color: #fff; background: var(--accent-text); border-color: var(--accent-text); pointer-events: none; }
+.page-dots { color: var(--text-tertiary); font-size: 14px; padding: 0 2px; }
+
 /* ── Footer ── */
 footer {
   padding: 24px 0; margin-top: 48px;
