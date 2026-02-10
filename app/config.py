@@ -49,11 +49,12 @@ class Settings(BaseSettings):
             url = url.replace("postgresql+psycopg://", "postgresql+asyncpg://", 1)
         elif url.startswith("postgresql://"):
             url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
-        # Strip params not supported by asyncpg (e.g. channel_binding from Neon)
+        # Strip params not supported by asyncpg (sslmode, channel_binding)
         from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
         parsed = urlparse(url)
         params = parse_qs(parsed.query)
         params.pop("channel_binding", None)
+        params.pop("sslmode", None)
         cleaned_query = urlencode(params, doseq=True)
         url = urlunparse(parsed._replace(query=cleaned_query))
         return url
