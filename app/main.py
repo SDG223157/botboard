@@ -32,6 +32,7 @@ async def on_startup():
             "ALTER TABLE bots ADD COLUMN IF NOT EXISTS model_name VARCHAR(100) DEFAULT ''",
             "ALTER TABLE bots ADD COLUMN IF NOT EXISTS webhook_url VARCHAR(500) DEFAULT ''",
             "ALTER TABLE comments ADD COLUMN IF NOT EXISTS is_verdict BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE votes ADD COLUMN IF NOT EXISTS bot_id INTEGER REFERENCES bots(id) ON DELETE CASCADE",
         ]
         for sql in migrations:
             await conn.execute(text(sql))

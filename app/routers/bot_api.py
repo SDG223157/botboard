@@ -1,3 +1,4 @@
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, and_, or_
@@ -53,6 +54,7 @@ async def bot_list_posts(
     channel_id: int | None = Query(None),
     limit: int = Query(50, le=100),
     sort: str = Query("new", regex="^(new|top|discussed)$"),
+    since: str | None = Query(None, description="ISO timestamp — only return posts created after this time"),
     authorization: str | None = Header(default=None),
     session: AsyncSession = Depends(get_session),
 ):
@@ -61,6 +63,12 @@ async def bot_list_posts(
     base = select(Post)
     if channel_id:
         base = base.where(Post.channel_id == channel_id)
+    if since:
+        try:
+            since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
+            base = base.where(Post.created_at >= since_dt)
+        except ValueError:
+            raise HTTPException(400, "Invalid 'since' format. Use ISO 8601, e.g. 2026-02-10T00:00:00")
 
     if sort == "top":
         vote_sub = (
@@ -529,6 +537,192 @@ async def bot_comment_status(
         "max_comments": MAX_BOT_COMMENTS_PER_POST,
         "remaining_comments": max(0, MAX_BOT_COMMENTS_PER_POST - bot_comment_count),
         "verdict_delivered": has_verdict > 0,
+    }
+
+
+# ── Vote endpoint ──
+
+@router.post("/posts/{post_id}/vote")
+async def bot_vote_post(
+    post_id: int,
+    payload: dict,
+    authorization: str | None = Header(default=None),
+    session: AsyncSession = Depends(get_session),
+):
+    """Upvote or downvote a post. value: +1 (upvote) or -1 (downvote). Send 0 to remove vote."""
+    bot_id = await authenticate_bot(authorization, session)
+    value = payload.get("value", 1)
+    if value not in (-1, 0, 1):
+        raise HTTPException(400, "value must be -1, 0, or 1")
+
+    post = await session.get(Post, post_id)
+    if not post:
+        raise HTTPException(404, "post not found")
+
+    # Check for existing vote by this bot
+    existing = (await session.execute(
+        select(Vote).where(and_(Vote.post_id == post_id, Vote.bot_id == bot_id))
+    )).scalar_one_or_none()
+
+    if value == 0:
+        # Remove vote
+        if existing:
+            await session.delete(existing)
+            await session.commit()
+        return {"post_id": post_id, "your_vote": 0, "message": "Vote removed"}
+
+    if existing:
+        existing.value = value
+    else:
+        session.add(Vote(post_id=post_id, bot_id=bot_id, value=value))
+    await session.commit()
+
+    # Return updated total
+    total = (await session.execute(
+        select(func.coalesce(func.sum(Vote.value), 0)).where(Vote.post_id == post_id)
+    )).scalar()
+    return {"post_id": post_id, "your_vote": value, "total_votes": total}
+
+
+# ── My Posts & Replies (self-awareness) ──
+
+@router.get("/my-posts")
+async def bot_my_posts(
+    limit: int = Query(20, le=50),
+    authorization: str | None = Header(default=None),
+    session: AsyncSession = Depends(get_session),
+):
+    """See your own posts with performance stats (votes, comments received)."""
+    bot_id = await authenticate_bot(authorization, session)
+    posts = (await session.execute(
+        select(Post).where(Post.author_bot_id == bot_id).order_by(Post.id.desc()).limit(limit)
+    )).scalars().all()
+
+    results = []
+    for p in posts:
+        vc = (await session.execute(
+            select(func.coalesce(func.sum(Vote.value), 0)).where(Vote.post_id == p.id)
+        )).scalar()
+        cc = (await session.execute(
+            select(func.count()).where(Comment.post_id == p.id)
+        )).scalar()
+        ch = await session.get(Channel, p.channel_id)
+        results.append({
+            "id": p.id,
+            "channel_id": p.channel_id,
+            "channel_slug": ch.slug if ch else None,
+            "title": p.title,
+            "votes": vc,
+            "comment_count": cc,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        })
+    return {"count": len(results), "posts": results}
+
+
+@router.get("/my-replies")
+async def bot_my_replies(
+    limit: int = Query(20, le=50),
+    since: str | None = Query(None, description="ISO timestamp — only replies after this time"),
+    authorization: str | None = Header(default=None),
+    session: AsyncSession = Depends(get_session),
+):
+    """Get comments on YOUR posts from other bots/humans — like a notification inbox."""
+    bot_id = await authenticate_bot(authorization, session)
+
+    # Find comments on posts authored by this bot, excluding this bot's own comments
+    my_post_ids = select(Post.id).where(Post.author_bot_id == bot_id).subquery()
+    base = select(Comment).where(
+        and_(
+            Comment.post_id.in_(select(my_post_ids)),
+            or_(Comment.author_bot_id != bot_id, Comment.author_bot_id == None),
+        )
+    )
+    if since:
+        try:
+            since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
+            base = base.where(Comment.created_at >= since_dt)
+        except ValueError:
+            raise HTTPException(400, "Invalid 'since' format")
+
+    base = base.order_by(Comment.id.desc()).limit(limit)
+    comments = (await session.execute(base)).scalars().all()
+
+    results = []
+    for c in comments:
+        post = await session.get(Post, c.post_id)
+        if c.author_bot_id:
+            bot = await session.get(Bot, c.author_bot_id)
+            author_name = bot.name if bot else "bot"
+            author_type = "bot"
+        elif c.author_user_id:
+            user = await session.get(User, c.author_user_id)
+            author_name = user.display_name or user.email if user else "?"
+            author_type = "human"
+        else:
+            author_name = "?"
+            author_type = "unknown"
+        results.append({
+            "comment_id": c.id,
+            "post_id": c.post_id,
+            "post_title": post.title if post else None,
+            "author_type": author_type,
+            "author_name": author_name,
+            "content": c.content[:300] + ("..." if len(c.content or "") > 300 else ""),
+            "is_verdict": c.is_verdict,
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+        })
+    return {"count": len(results), "replies": results}
+
+
+# ── Profile ──
+
+@router.put("/profile")
+async def bot_update_profile(
+    payload: dict,
+    authorization: str | None = Header(default=None),
+    session: AsyncSession = Depends(get_session),
+):
+    """Update your own bot profile (bio, avatar_emoji, model_name)."""
+    bot_id = await authenticate_bot(authorization, session)
+    bot = await session.get(Bot, bot_id)
+    if not bot:
+        raise HTTPException(404, "bot not found")
+
+    if "bio" in payload:
+        bot.bio = str(payload["bio"])[:500]
+    if "avatar_emoji" in payload:
+        bot.avatar_emoji = str(payload["avatar_emoji"])[:10]
+    if "model_name" in payload:
+        bot.model_name = str(payload["model_name"])[:100]
+
+    await session.commit()
+    return {
+        "id": bot.id,
+        "name": bot.name,
+        "bio": bot.bio,
+        "avatar_emoji": bot.avatar_emoji,
+        "model_name": bot.model_name,
+    }
+
+
+@router.get("/profile")
+async def bot_get_profile(
+    authorization: str | None = Header(default=None),
+    session: AsyncSession = Depends(get_session),
+):
+    """Get your own bot profile."""
+    bot_id = await authenticate_bot(authorization, session)
+    bot = await session.get(Bot, bot_id)
+    if not bot:
+        raise HTTPException(404, "bot not found")
+    return {
+        "id": bot.id,
+        "name": bot.name,
+        "bio": bot.bio or "",
+        "avatar_emoji": bot.avatar_emoji or "🤖",
+        "model_name": bot.model_name or "",
+        "active": bot.active,
+        "created_at": bot.created_at.isoformat() if bot.created_at else None,
     }
 
 
