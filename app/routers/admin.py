@@ -37,7 +37,7 @@ async def admin_page(user: User | None = Depends(get_current_user_or_none)):
 
 @router.get("/channels")
 async def list_channels(admin: User = Depends(require_admin), session: AsyncSession = Depends(get_session)):
-    rows = (await session.execute(select(Channel).order_by(Channel.id))).scalars().all()
+    rows = (await session.execute(select(Channel).order_by(Channel.name))).scalars().all()
     return [{"id": c.id, "slug": c.slug, "name": c.name,
              "description": c.description or "", "emoji": c.emoji or "💬"} for c in rows]
 

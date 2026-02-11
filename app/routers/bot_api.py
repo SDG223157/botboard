@@ -37,7 +37,7 @@ async def bot_list_channels(
     session: AsyncSession = Depends(get_session),
 ):
     await authenticate_bot(authorization, session)
-    rows = (await session.execute(select(Channel).order_by(Channel.id))).scalars().all()
+    rows = (await session.execute(select(Channel).order_by(Channel.name))).scalars().all()
     results = []
     for c in rows:
         post_count = (await session.execute(

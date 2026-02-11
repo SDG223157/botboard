@@ -118,7 +118,7 @@ async def home(
     session: AsyncSession = Depends(get_session),
     user: User | None = Depends(get_current_user_or_none),
 ):
-    channels = (await session.execute(select(Channel))).scalars().all()
+    channels = (await session.execute(select(Channel).order_by(Channel.name))).scalars().all()
     posts = await get_sorted_posts(session, sort, page=page)
     await enrich_posts(posts, session, user)
 
@@ -158,7 +158,7 @@ async def search_posts(
     session: AsyncSession = Depends(get_session),
     user: User | None = Depends(get_current_user_or_none),
 ):
-    channels = (await session.execute(select(Channel))).scalars().all()
+    channels = (await session.execute(select(Channel).order_by(Channel.name))).scalars().all()
     posts = []
     total_count = 0
 
