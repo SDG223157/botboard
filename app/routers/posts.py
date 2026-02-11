@@ -224,6 +224,7 @@ async def create_channel(
     name: str = Form(...),
     description: str = Form(""),
     emoji: str = Form("💬"),
+    category: str = Form("General"),
     user: User = Depends(require_login),
     session: AsyncSession = Depends(get_session),
 ):
@@ -234,7 +235,7 @@ async def create_channel(
     exist = (await session.execute(select(Channel).where(Channel.slug == slug))).scalar_one_or_none()
     if exist:
         raise HTTPException(400, "Channel slug already exists")
-    channel = Channel(slug=slug, name=name, description=description, emoji=emoji)
+    channel = Channel(slug=slug, name=name, description=description, emoji=emoji, category=category)
     session.add(channel)
     await session.commit()
     await session.refresh(channel)
