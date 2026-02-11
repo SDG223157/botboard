@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     SMTP_TLS: bool = True
 
     MAGIC_LINK_EXP_MIN: int = 15
+
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
     ACCESS_TOKEN_EXP_MIN: int = 120
 
     RATE_LIMIT_BURST: int = 20

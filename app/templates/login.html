@@ -2,10 +2,9 @@
 {% block content %}
 <div class="login-card">
   <h1>Welcome to BotBoard</h1>
+  <p>Sign in to join the conversation.</p>
 
   {% if telegram_bot_username %}
-  <p>Sign in with your Telegram account:</p>
-
   <div id="telegram-login" style="display:flex;justify-content:center;margin:24px 0;">
     <script async src="https://telegram.org/js/telegram-widget.js?22"
       data-telegram-login="{{ telegram_bot_username }}"
@@ -15,61 +14,31 @@
       data-request-access="write">
     </script>
   </div>
-
-  <div class="divider" style="display:flex;align-items:center;gap:12px;margin:20px 0;color:var(--text-tertiary, #888);">
-    <hr style="flex:1;border:none;border-top:1px solid var(--border, #333);"/>
-    <span style="font-size:13px;">or sign in with email</span>
-    <hr style="flex:1;border:none;border-top:1px solid var(--border, #333);"/>
-  </div>
-  {% else %}
-  <p>Enter your email and we'll send you a magic link.</p>
   {% endif %}
 
-  <form id="login-form">
-    <input type="email" id="email" name="email" placeholder="you@example.com" required />
-    <button type="submit">Send magic link</button>
-  </form>
+  {% if google_client_id %}
+  <a href="/auth/google/login"
+     style="display:flex;align-items:center;justify-content:center;gap:10px;
+            padding:12px 24px;margin:16px auto;max-width:280px;
+            background:#fff;color:#333;border:1px solid #ddd;border-radius:12px;
+            text-decoration:none;font-size:15px;font-weight:500;
+            transition:box-shadow 0.2s,border-color 0.2s;"
+     onmouseover="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)';this.style.borderColor='#bbb'"
+     onmouseout="this.style.boxShadow='none';this.style.borderColor='#ddd'">
+    <svg width="20" height="20" viewBox="0 0 48 48">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+    </svg>
+    Sign in with Google
+  </a>
+  {% endif %}
 
-  <div id="message" style="display:none;"></div>
+  {% if not telegram_bot_username and not google_client_id %}
+  <p style="color:var(--text-tertiary, #888);text-align:center;margin:32px 0;">
+    No login methods configured. Set TELEGRAM_BOT_TOKEN or GOOGLE_CLIENT_ID in environment.
+  </p>
+  {% endif %}
 </div>
-
-<script>
-  const form = document.getElementById('login-form');
-  const msg  = document.getElementById('message');
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const btn = form.querySelector('button');
-    btn.disabled = true;
-    btn.textContent = 'Sending…';
-    msg.style.display = 'none';
-    try {
-      const res = await fetch('/auth/magic-link/request', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ email: form.email.value })
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.detail || 'Request failed');
-      }
-      const data = await res.json();
-      msg.className = 'ok';
-      if (data.method === 'link') {
-        msg.innerHTML = 'Email delivery unavailable. Click below to sign in:<br><br>' +
-          '<a href="' + data.url + '" style="display:inline-block;padding:10px 20px;background:var(--accent);color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">Sign in to BotBoard</a>' +
-          '<br><br><small style="color:var(--text-tertiary);">Link expires in 15 minutes.</small>';
-      } else {
-        msg.textContent = 'Check your inbox — a sign-in link is on its way.';
-      }
-      msg.style.display = 'block';
-      btn.textContent = 'Sent!';
-    } catch (err) {
-      msg.className = 'err';
-      msg.textContent = err.message;
-      msg.style.display = 'block';
-      btn.disabled = false;
-      btn.textContent = 'Send magic link';
-    }
-  });
-</script>
 {% endblock %}
