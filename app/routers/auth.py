@@ -1,3 +1,7 @@
+import hashlib
+import hmac
+import time
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy import select
@@ -33,7 +37,10 @@ async def login_page(user: User | None = Depends(get_current_user_or_none)):
     if user:
         return RedirectResponse("/", status_code=302)
     tpl = _env.get_template("login.html")
-    return tpl.render(title="Sign in — BotBoard")
+    return tpl.render(
+        title="Sign in — BotBoard",
+        telegram_bot_username=settings.TELEGRAM_BOT_USERNAME,
+    )
 
 
 @router.post("/magic-link/request")
@@ -104,6 +111,87 @@ async def magic_link_callback(token: str, session: AsyncSession = Depends(get_se
     access = generate_access_token(str(user.id))
 
     # Set httpOnly cookie and redirect (also set localStorage for backwards compat)
+    html = f"""
+    <html><body>
+    <script>
+      localStorage.setItem('access_token', '{access}');
+      window.location.href = '/';
+    </script>
+    </body></html>
+    """
+    response = HTMLResponse(content=html)
+    response.set_cookie(value=access, **_COOKIE_OPTS)
+    return response
+
+
+def _verify_telegram_auth(data: dict) -> bool:
+    """Verify Telegram Login Widget callback data using HMAC-SHA256."""
+    if not settings.TELEGRAM_BOT_TOKEN:
+        return False
+    check_hash = data.get("hash", "")
+    # Build check string: sorted key=value pairs excluding 'hash'
+    filtered = {k: v for k, v in data.items() if k != "hash" and v}
+    check_string = "\n".join(f"{k}={filtered[k]}" for k in sorted(filtered))
+    # Secret = SHA256(bot_token)
+    secret = hashlib.sha256(settings.TELEGRAM_BOT_TOKEN.encode()).digest()
+    computed = hmac.new(secret, check_string.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(computed, check_hash)
+
+
+@router.get("/telegram/callback")
+async def telegram_callback(request: Request, session: AsyncSession = Depends(get_session)):
+    """Handle Telegram Login Widget callback."""
+    params = dict(request.query_params)
+
+    # Verify authenticity
+    if not _verify_telegram_auth(params):
+        raise HTTPException(400, "Invalid Telegram auth data")
+
+    # Check auth_date is not too old (allow 5 minutes)
+    auth_date = int(params.get("auth_date", 0))
+    if abs(time.time() - auth_date) > 300:
+        raise HTTPException(400, "Telegram auth expired")
+
+    telegram_id = int(params["id"])
+    first_name = params.get("first_name", "")
+    last_name = params.get("last_name", "")
+    username = params.get("username", "")
+    photo_url = params.get("photo_url", "")
+    display = f"{first_name} {last_name}".strip() or username or f"tg_{telegram_id}"
+
+    # Find user by telegram_id
+    result = await session.execute(select(User).where(User.telegram_id == telegram_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        # Create new user — use telegram-based placeholder email
+        placeholder_email = f"tg_{telegram_id}@telegram.user"
+        user = User(
+            email=placeholder_email,
+            display_name=display,
+            telegram_id=telegram_id,
+            telegram_username=username,
+            telegram_photo_url=photo_url,
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+    else:
+        # Update profile from Telegram
+        user.display_name = display
+        user.telegram_username = username
+        user.telegram_photo_url = photo_url
+        await session.commit()
+
+    # Auto-promote first admin
+    if settings.AUTO_PROMOTE_FIRST_ADMIN:
+        count = (await session.execute(select(User))).scalars().all()
+        if len(count) == 1 and not user.is_admin:
+            user.is_admin = True
+            await session.commit()
+
+    access = generate_access_token(str(user.id))
+
     html = f"""
     <html><body>
     <script>

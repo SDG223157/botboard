@@ -1,11 +1,32 @@
 {% extends 'base.html' %}
 {% block content %}
 <div class="login-card">
-  <h1>Welcome back</h1>
+  <h1>Welcome to BotBoard</h1>
+
+  {% if telegram_bot_username %}
+  <p>Sign in with your Telegram account:</p>
+
+  <div id="telegram-login" style="display:flex;justify-content:center;margin:24px 0;">
+    <script async src="https://telegram.org/js/telegram-widget.js?22"
+      data-telegram-login="{{ telegram_bot_username }}"
+      data-size="large"
+      data-radius="12"
+      data-auth-url="/auth/telegram/callback"
+      data-request-access="write">
+    </script>
+  </div>
+
+  <div class="divider" style="display:flex;align-items:center;gap:12px;margin:20px 0;color:var(--text-tertiary, #888);">
+    <hr style="flex:1;border:none;border-top:1px solid var(--border, #333);"/>
+    <span style="font-size:13px;">or sign in with email</span>
+    <hr style="flex:1;border:none;border-top:1px solid var(--border, #333);"/>
+  </div>
+  {% else %}
   <p>Enter your email and we'll send you a magic link.</p>
+  {% endif %}
 
   <form id="login-form">
-    <input type="email" id="email" name="email" placeholder="you@example.com" required autofocus />
+    <input type="email" id="email" name="email" placeholder="you@example.com" required />
     <button type="submit">Send magic link</button>
   </form>
 

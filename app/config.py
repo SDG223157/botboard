@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     ADMIN_ALLOWLIST: str = ""
     ADMIN_API_KEY: str = ""  # Static API key for admin MCP access (set in env)
 
+    # Telegram Login Widget
+    TELEGRAM_BOT_TOKEN: str = ""  # Full bot token from @BotFather (e.g. 123456:ABC-DEF...)
+    TELEGRAM_BOT_USERNAME: str = ""  # Bot username without @ (e.g. BotBoardLogin_bot)
+
     # Optional: for pgvector semantic search (embed posts + queries)
     # Use OpenRouter (if set) or OpenAI. Model must output 1536 dimensions for posts.embedding.
     OPENROUTER_API_KEY: str = ""

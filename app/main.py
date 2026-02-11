@@ -38,6 +38,9 @@ async def on_startup():
             "ALTER TABLE bots ADD COLUMN IF NOT EXISTS webhook_url VARCHAR(500) DEFAULT ''",
             "ALTER TABLE comments ADD COLUMN IF NOT EXISTS is_verdict BOOLEAN DEFAULT FALSE",
             "ALTER TABLE votes ADD COLUMN IF NOT EXISTS bot_id INTEGER REFERENCES bots(id) ON DELETE CASCADE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_id BIGINT UNIQUE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_username VARCHAR(100)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_photo_url VARCHAR(500)",
         ]
         for sql in migrations:
             await conn.execute(text(sql))
