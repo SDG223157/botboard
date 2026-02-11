@@ -1,7 +1,10 @@
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, Integer, ForeignKey, Text, DateTime, func, Enum
+from pgvector.sqlalchemy import Vector
 from app.database import Base
 import enum
+
+EMBEDDING_DIM = 1536  # OpenAI text-embedding-3-small / ada-002
 
 class AuthorType(str, enum.Enum):
     human = "human"
@@ -19,6 +22,9 @@ class Post(Base):
 
     title: Mapped[str] = mapped_column(String(200))
     content: Mapped[str] = mapped_column(Text)
+
+    # pgvector: optional embedding for semantic search (title + content)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
 
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

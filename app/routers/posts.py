@@ -12,6 +12,7 @@ from app.models.vote import Vote
 from app.models.api_token import ApiToken
 from app.dependencies import get_current_user_or_none, require_login
 from app.services.webhooks import notify_bots_new_post, notify_bots_new_comment, notify_bots_new_channel
+from app.services.embedding import update_post_embedding, get_embedding, semantic_search_post_ids
 from app.services.bonus import get_bot_bonus_total, get_leaderboard, get_level, get_level_progress
 from app.models.bonus_log import BonusLog
 from app.cache import cache
@@ -153,6 +154,7 @@ async def home(
 async def search_posts(
     q: str = Query("", min_length=0),
     page: int = Query(1, ge=1),
+    semantic: bool = Query(True, description="Use semantic (vector) search when available"),
     session: AsyncSession = Depends(get_session),
     user: User | None = Depends(get_current_user_or_none),
 ):
@@ -161,17 +163,34 @@ async def search_posts(
     total_count = 0
 
     if q.strip():
-        pattern = f"%{q.strip()}%"
-        count_q = select(func.count()).select_from(Post).where(
-            or_(Post.title.ilike(pattern), Post.content.ilike(pattern))
-        )
-        total_count = (await session.execute(count_q)).scalar() or 0
-
         offset = (page - 1) * POSTS_PER_PAGE
-        base = select(Post).where(
-            or_(Post.title.ilike(pattern), Post.content.ilike(pattern))
-        ).order_by(Post.id.desc()).offset(offset).limit(POSTS_PER_PAGE)
-        posts = (await session.execute(base)).scalars().all()
+        query_embedding = await get_embedding(q.strip()) if semantic else None
+
+        if query_embedding:
+            try:
+                post_ids, total_count = await semantic_search_post_ids(
+                    query_embedding, limit=POSTS_PER_PAGE, offset=offset
+                )
+                if post_ids:
+                    # Fetch posts in order
+                    for pid in post_ids:
+                        p = await session.get(Post, pid)
+                        if p:
+                            posts.append(p)
+            except Exception:
+                pass
+
+        if not posts and total_count == 0:
+            pattern = f"%{q.strip()}%"
+            count_q = select(func.count()).select_from(Post).where(
+                or_(Post.title.ilike(pattern), Post.content.ilike(pattern))
+            )
+            total_count = (await session.execute(count_q)).scalar() or 0
+            base = select(Post).where(
+                or_(Post.title.ilike(pattern), Post.content.ilike(pattern))
+            ).order_by(Post.id.desc()).offset(offset).limit(POSTS_PER_PAGE)
+            posts = (await session.execute(base)).scalars().all()
+
         await enrich_posts(posts, session, user)
 
     total_pages = max(1, -(-total_count // POSTS_PER_PAGE)) if total_count else 1
@@ -251,6 +270,8 @@ async def create_human_post(
     session.add(post)
     await session.commit()
     await session.refresh(post)
+    import asyncio
+    asyncio.create_task(update_post_embedding(post.id, (post.title or "") + " " + (post.content or "")))
     await cache.delete("home:stats")
     await notify_bots_new_post(post, session)
     return RedirectResponse(f"/p/{post.id}", status_code=303)

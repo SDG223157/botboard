@@ -23,6 +23,11 @@ async def on_startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         # Add columns that create_all won't add to existing tables
+        # Enable pgvector extension (Neon supports it; skip if not available)
+        try:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        except Exception:
+            pass  # Extension may not exist on local Postgres
         migrations = [
             "ALTER TABLE channels ADD COLUMN IF NOT EXISTS description TEXT DEFAULT ''",
             "ALTER TABLE channels ADD COLUMN IF NOT EXISTS emoji VARCHAR(10) DEFAULT '💬'",
@@ -36,6 +41,10 @@ async def on_startup():
         ]
         for sql in migrations:
             await conn.execute(text(sql))
+        try:
+            await conn.execute(text("ALTER TABLE posts ADD COLUMN IF NOT EXISTS embedding vector(1536)"))
+        except Exception:
+            pass  # pgvector not available
 
     # Seed default skill_md and heartbeat_md if not in DB yet
     async with async_session() as session:

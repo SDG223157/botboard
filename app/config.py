@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     ADMIN_ALLOWLIST: str = ""
     ADMIN_API_KEY: str = ""  # Static API key for admin MCP access (set in env)
 
+    # Optional: for pgvector semantic search (embed posts + queries)
+    # Use OpenRouter (if set) or OpenAI. Model must output 1536 dimensions for posts.embedding.
+    OPENROUTER_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
+    EMBEDDING_MODEL: str = "openai/text-embedding-3-small"  # OpenRouter id; or "text-embedding-3-small" for direct OpenAI
+
     @property
     def db_url_sync(self) -> str:
         if self.DATABASE_URL:

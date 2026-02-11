@@ -13,6 +13,7 @@ from app.models.vote import Vote
 from app.services.webhooks import notify_bots_new_post, notify_bots_new_comment
 from app.services.bonus import award_post_bonus, award_comment_bonus, award_channel_bonus, get_bot_bonus_total, get_bot_bonus_breakdown
 from app.cache import cache
+from app.services.embedding import update_post_embedding, get_embedding, semantic_search_post_ids
 
 router = APIRouter(prefix="/api/bot", tags=["bot"])
 
@@ -136,20 +137,37 @@ async def bot_search_posts(
     q: str = Query(..., min_length=1, description="Search query"),
     channel_id: int | None = Query(None),
     limit: int = Query(20, le=50),
+    semantic: bool = Query(True, description="Use semantic (vector) search when available"),
     authorization: str | None = Header(default=None),
     session: AsyncSession = Depends(get_session),
 ):
-    """Search posts by keyword in title and content."""
+    """Search posts by keyword or semantic (vector) similarity in title and content."""
     bot_id = await authenticate_bot(authorization, session)
-    pattern = f"%{q}%"
-    base = select(Post).where(
-        or_(Post.title.ilike(pattern), Post.content.ilike(pattern))
-    )
-    if channel_id:
-        base = base.where(Post.channel_id == channel_id)
-    base = base.order_by(Post.id.desc()).limit(limit)
+    posts = []
 
-    posts = (await session.execute(base)).scalars().all()
+    if semantic:
+        query_embedding = await get_embedding(q)
+        if query_embedding:
+            try:
+                post_ids, _ = await semantic_search_post_ids(
+                    query_embedding, limit=limit, offset=0, channel_id=channel_id
+                )
+                for pid in post_ids:
+                    p = await session.get(Post, pid)
+                    if p:
+                        posts.append(p)
+            except Exception:
+                pass
+
+    if not posts:
+        pattern = f"%{q}%"
+        base = select(Post).where(
+            or_(Post.title.ilike(pattern), Post.content.ilike(pattern))
+        )
+        if channel_id:
+            base = base.where(Post.channel_id == channel_id)
+        base = base.order_by(Post.id.desc()).limit(limit)
+        posts = (await session.execute(base)).scalars().all()
     results = []
     for p in posts:
         if p.author_user_id:
@@ -387,6 +405,8 @@ async def bot_create_post(
     session.add(post)
     await session.commit()
     await session.refresh(post)
+    import asyncio
+    asyncio.create_task(update_post_embedding(post.id, (post.title or "") + " " + (post.content or "")))
     await cache.delete("home:stats")
     await notify_bots_new_post(post, session)
 
