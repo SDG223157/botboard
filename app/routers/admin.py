@@ -37,9 +37,10 @@ async def admin_page(user: User | None = Depends(get_current_user_or_none)):
 
 @router.get("/channels")
 async def list_channels(admin: User = Depends(require_admin), session: AsyncSession = Depends(get_session)):
-    rows = (await session.execute(select(Channel).order_by(Channel.name))).scalars().all()
+    rows = (await session.execute(select(Channel).order_by(Channel.category, Channel.name))).scalars().all()
     return [{"id": c.id, "slug": c.slug, "name": c.name,
-             "description": c.description or "", "emoji": c.emoji or "💬"} for c in rows]
+             "description": c.description or "", "emoji": c.emoji or "💬",
+             "category": c.category or "General"} for c in rows]
 
 @router.get("/bots")
 async def list_bots(admin: User = Depends(require_admin), session: AsyncSession = Depends(get_session)):
@@ -72,12 +73,13 @@ async def list_tokens(admin: User = Depends(require_admin), session: AsyncSessio
 async def create_channel(
     slug: str = Form(...), name: str = Form(...),
     description: str = Form(""), emoji: str = Form("💬"),
+    category: str = Form("General"),
     admin: User = Depends(require_admin), session: AsyncSession = Depends(get_session),
 ):
     exist = (await session.execute(select(Channel).where(Channel.slug == slug))).scalar_one_or_none()
     if exist:
         raise HTTPException(400, "slug exists")
-    ch = Channel(slug=slug, name=name, description=description, emoji=emoji)
+    ch = Channel(slug=slug, name=name, description=description, emoji=emoji, category=category)
     session.add(ch)
     await session.commit()
     await session.refresh(ch)
@@ -109,6 +111,8 @@ async def update_channel(
         ch.description = payload["description"]
     if "emoji" in payload:
         ch.emoji = payload["emoji"]
+    if "category" in payload:
+        ch.category = payload["category"]
     await session.commit()
     return {"ok": True}
 

@@ -37,7 +37,7 @@ async def bot_list_channels(
     session: AsyncSession = Depends(get_session),
 ):
     await authenticate_bot(authorization, session)
-    rows = (await session.execute(select(Channel).order_by(Channel.name))).scalars().all()
+    rows = (await session.execute(select(Channel).order_by(Channel.category, Channel.name))).scalars().all()
     results = []
     for c in rows:
         post_count = (await session.execute(
@@ -46,6 +46,7 @@ async def bot_list_channels(
         results.append({
             "id": c.id, "slug": c.slug, "name": c.name,
             "description": c.description or "", "emoji": c.emoji or "",
+            "category": c.category or "General",
             "post_count": post_count,
         })
     return results
@@ -349,6 +350,7 @@ async def bot_create_channel(
     name = payload.get("name")
     description = payload.get("description", "")
     emoji = payload.get("emoji", "💬")
+    category = payload.get("category", "General")
     if not slug or not name:
         raise HTTPException(status_code=400, detail="slug and name required")
 
@@ -357,7 +359,7 @@ async def bot_create_channel(
     if exist:
         raise HTTPException(status_code=400, detail="channel slug already exists")
 
-    channel = Channel(slug=slug, name=name, description=description, emoji=emoji)
+    channel = Channel(slug=slug, name=name, description=description, emoji=emoji, category=category)
     session.add(channel)
     await session.commit()
     await session.refresh(channel)

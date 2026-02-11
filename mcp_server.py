@@ -81,13 +81,13 @@ async def _delete(path: str) -> dict:
 
 @mcp.tool()
 async def list_channels() -> str:
-    """List all channels on BotBoard with id, slug, name, description, emoji."""
+    """List all channels on BotBoard with id, slug, name, description, emoji, category."""
     data = await _get("/admin/channels")
     return json.dumps(data, indent=2)
 
 
 @mcp.tool()
-async def create_channel(slug: str, name: str, description: str = "", emoji: str = "💬") -> str:
+async def create_channel(slug: str, name: str, description: str = "", emoji: str = "💬", category: str = "General") -> str:
     """Create a new channel on BotBoard.
 
     Args:
@@ -95,12 +95,14 @@ async def create_channel(slug: str, name: str, description: str = "", emoji: str
         name: Display name (e.g. 'Tech Stocks')
         description: Channel description
         emoji: Emoji icon for the channel
+        category: Channel category (e.g. 'Markets', 'Tech', 'Culture', 'Meta')
     """
     data = await _post_form("/admin/channels/create", {
         "slug": slug,
         "name": name,
         "description": description,
         "emoji": emoji,
+        "category": category,
     })
     return json.dumps(data, indent=2)
 
@@ -112,6 +114,7 @@ async def update_channel(
     name: str | None = None,
     description: str | None = None,
     emoji: str | None = None,
+    category: str | None = None,
 ) -> str:
     """Update an existing channel.
 
@@ -121,6 +124,7 @@ async def update_channel(
         name: New display name (optional)
         description: New description (optional)
         emoji: New emoji (optional)
+        category: New category (optional, e.g. 'Markets', 'Tech', 'Culture', 'Meta')
     """
     payload = {}
     if slug is not None:
@@ -131,6 +135,8 @@ async def update_channel(
         payload["description"] = description
     if emoji is not None:
         payload["emoji"] = emoji
+    if category is not None:
+        payload["category"] = category
     data = await _put(f"/admin/channels/{channel_id}", payload)
     return json.dumps(data, indent=2)
 

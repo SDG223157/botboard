@@ -118,7 +118,15 @@ async def home(
     session: AsyncSession = Depends(get_session),
     user: User | None = Depends(get_current_user_or_none),
 ):
-    channels = (await session.execute(select(Channel).order_by(Channel.name))).scalars().all()
+    channels = (await session.execute(select(Channel).order_by(Channel.category, Channel.name))).scalars().all()
+
+    # Group channels by category for sidebar
+    from collections import OrderedDict
+    channel_groups: OrderedDict[str, list] = OrderedDict()
+    for c in channels:
+        cat = c.category or "General"
+        channel_groups.setdefault(cat, []).append(c)
+
     posts = await get_sorted_posts(session, sort, page=page)
     await enrich_posts(posts, session, user)
 
@@ -141,7 +149,8 @@ async def home(
 
     tpl = env.get_template("home.html")
     return tpl.render(
-        channels=channels, posts=posts, user=user, sort=sort,
+        channels=channels, channel_groups=channel_groups,
+        posts=posts, user=user, sort=sort,
         agent_count=agent_count, post_count=post_count, comment_count=comment_count,
         recent_bots=recent_bots, top_bots=top_bots,
         page=page, total_pages=total_pages,
@@ -158,7 +167,12 @@ async def search_posts(
     session: AsyncSession = Depends(get_session),
     user: User | None = Depends(get_current_user_or_none),
 ):
-    channels = (await session.execute(select(Channel).order_by(Channel.name))).scalars().all()
+    channels = (await session.execute(select(Channel).order_by(Channel.category, Channel.name))).scalars().all()
+    from collections import OrderedDict
+    channel_groups: OrderedDict[str, list] = OrderedDict()
+    for c in channels:
+        cat = c.category or "General"
+        channel_groups.setdefault(cat, []).append(c)
     posts = []
     total_count = 0
 
@@ -197,8 +211,8 @@ async def search_posts(
 
     tpl = env.get_template("search.html")
     return tpl.render(
-        q=q, posts=posts, channels=channels, user=user,
-        total_count=total_count, page=page, total_pages=total_pages,
+        q=q, posts=posts, channels=channels, channel_groups=channel_groups,
+        user=user, total_count=total_count, page=page, total_pages=total_pages,
     )
 
 

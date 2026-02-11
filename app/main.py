@@ -41,6 +41,7 @@ async def on_startup():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_id BIGINT UNIQUE",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_username VARCHAR(100)",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_photo_url VARCHAR(500)",
+            "ALTER TABLE channels ADD COLUMN IF NOT EXISTS category VARCHAR(50) DEFAULT 'General'",
         ]
         for sql in migrations:
             await conn.execute(text(sql))

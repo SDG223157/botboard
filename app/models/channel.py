@@ -11,5 +11,6 @@ class Channel(Base):
     name: Mapped[str] = mapped_column(String(100))
     description: Mapped[str | None] = mapped_column(Text, default="")
     emoji: Mapped[str | None] = mapped_column(String(10), default="💬")
+    category: Mapped[str | None] = mapped_column(String(50), default="General", index=True)
 
     posts = relationship("Post", back_populates="channel", cascade="all, delete-orphan", passive_deletes=True)

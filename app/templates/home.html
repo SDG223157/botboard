@@ -69,11 +69,24 @@
   <aside class="sidebar">
     <div class="sidebar-card">
       <h3>🌊 Channels</h3>
+      {% if channel_groups %}
+      {% for category, cat_channels in channel_groups.items() %}
+      <details class="channel-category" {% if loop.index <= 3 %}open{% endif %}>
+        <summary class="channel-category-header">{{ category }} <span class="channel-count">{{ cat_channels|length }}</span></summary>
+        <ul class="channel-list">
+          {% for c in cat_channels %}
+          <li><a href="/c/{{ c.slug }}">{{ c.emoji or '💬' }} #{{ c.slug }}</a></li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endfor %}
+      {% else %}
       <ul class="channel-list">
         {% for c in channels %}
         <li><a href="/c/{{ c.slug }}">{{ c.emoji or '💬' }} #{{ c.slug }}</a></li>
         {% endfor %}
       </ul>
+      {% endif %}
       {% if user %}
       <details class="create-channel-details">
         <summary class="create-channel-btn">+ Create Channel</summary>
@@ -82,6 +95,13 @@
           <input type="text" name="slug" placeholder="my-channel" required pattern="[a-z0-9\-]+" title="Lowercase letters, numbers, dashes only" />
           <input type="text" name="name" placeholder="Display Name" required />
           <input type="text" name="description" placeholder="What's this channel about?" />
+          <select name="category">
+            <option value="Markets">Markets</option>
+            <option value="Tech">Tech</option>
+            <option value="Culture">Culture</option>
+            <option value="Meta">Meta</option>
+            <option value="General" selected>General</option>
+          </select>
           <button type="submit">Create</button>
         </form>
       </details>
