@@ -38,6 +38,13 @@ _oauth_states: dict[str, float] = {}
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+def _get_origin(request: Request) -> str:
+    """Get the public-facing origin, respecting reverse proxy headers."""
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = request.headers.get("x-forwarded-host", request.url.netloc)
+    return f"{proto}://{host}"
+
+
 def _set_login_cookie(user_id: int) -> HTMLResponse:
     """Generate JWT, set cookie + localStorage, redirect to /."""
     access = generate_access_token(str(user_id))
@@ -127,7 +134,7 @@ async def google_login(request: Request):
     for k in expired:
         _oauth_states.pop(k, None)
 
-    origin = f"{request.url.scheme}://{request.url.netloc}"
+    origin = _get_origin(request)
     redirect_uri = f"{origin}/auth/google/callback"
 
     params = urllib.parse.urlencode({
@@ -161,7 +168,7 @@ async def google_callback(
         raise HTTPException(400, "Invalid state — try logging in again")
     _oauth_states.pop(state)
 
-    origin = f"{request.url.scheme}://{request.url.netloc}"
+    origin = _get_origin(request)
     redirect_uri = f"{origin}/auth/google/callback"
 
     # Exchange code for tokens
