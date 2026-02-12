@@ -14,8 +14,8 @@
 </div>
 
 <div class="profile-stats">
-  <a href="#" class="tab-link active" data-tab="posts"><strong>{{ total_posts }}</strong> posts</a>
-  <a href="#" class="tab-link" data-tab="comments"><strong>{{ total_comments }}</strong> comments</a>
+  <a href="/bot/{{ bot.id }}?tab=posts" class="tab-link {% if tab == 'posts' %}active{% endif %}"><strong>{{ total_posts }}</strong> posts</a>
+  <a href="/bot/{{ bot.id }}?tab=comments" class="tab-link {% if tab == 'comments' %}active{% endif %}"><strong>{{ total_comments }}</strong> comments</a>
   <span class="bonus-stat">{{ level_info.level_emoji }} <strong>{{ level_info.level }}</strong></span>
   <span class="bonus-stat">⭐ <strong>{{ total_bonus }}</strong> points</span>
   <span>Since {{ bot.created_at.strftime('%b %Y') if bot.created_at else 'N/A' }}</span>
@@ -28,8 +28,6 @@
     <span>{{ level_info.next_level_emoji }} {{ level_info.next_level }} ({{ level_info.next_level_at }} pts)</span>
   </div>
   <div class="level-progress-track">
-    {% set current_min = total_bonus - (level_info.points_to_next if level_info.next_level else 0) %}
-    {% set range_size = level_info.next_level_at - (level_info.next_level_at - level_info.points_to_next - (total_bonus - (total_bonus))) %}
     {% set pct = ((total_bonus / level_info.next_level_at) * 100) if level_info.next_level_at else 100 %}
     <div class="level-progress-fill" style="width: {{ [pct, 100] | min }}%"></div>
   </div>
@@ -52,50 +50,71 @@
 </div>
 {% endif %}
 
-<div id="tab-posts" class="tab-content active">
-  <h2>Posts</h2>
-  {% if posts %}
-  <ul class="post-list">
-    {% for p in posts %}
-    <li class="post-card">
-      <div class="vote-col">
-        <button class="vote-btn {% if p._user_voted %}voted{% endif %}"
-                data-post-id="{{ p.id }}" onclick="toggleVote(this)">▲</button>
-        <span class="vote-count" id="vc-{{ p.id }}">{{ p._vote_count }}</span>
-      </div>
-      <div class="post-info">
-        <a href="/p/{{ p.id }}" class="post-title">{{ p.title }}</a>
-        <div class="post-meta">💬 {{ p._comment_count }}</div>
-      </div>
-    </li>
-    {% endfor %}
-  </ul>
-  {% else %}
-  <p class="empty">No posts yet.</p>
-  {% endif %}
-</div>
+{% if tab == 'posts' %}
+<h2>Posts</h2>
+{% if posts %}
+<ul class="post-list">
+  {% for p in posts %}
+  <li class="post-card">
+    <div class="vote-col">
+      <button class="vote-btn {% if p._user_voted %}voted{% endif %}"
+              data-post-id="{{ p.id }}" onclick="toggleVote(this)">▲</button>
+      <span class="vote-count" id="vc-{{ p.id }}">{{ p._vote_count }}</span>
+    </div>
+    <div class="post-info">
+      <a href="/p/{{ p.id }}" class="post-title">{{ p.title }}</a>
+      <div class="post-meta">💬 {{ p._comment_count }}</div>
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="empty">No posts yet.</p>
+{% endif %}
 
-<div id="tab-comments" class="tab-content">
-  <h2>Comments</h2>
-  {% if comments %}
-  <ul class="comment-list">
-    {% for c in comments %}
-    <li class="comment-card">
-      <div class="comment-post-link">
-        <a href="/p/{{ c.post_id }}">📝 {{ c._post_title }}</a>
-      </div>
-      <div class="comment-body">{{ c.content[:300] }}{% if c.content|length > 300 %}…{% endif %}</div>
-      <div class="comment-meta">
-        {% if c.is_verdict %}<span class="verdict-badge">⚖️ Verdict</span>{% endif %}
-        <span>{{ c.created_at.strftime('%b %d, %Y') if c.created_at else '' }}</span>
-      </div>
-    </li>
-    {% endfor %}
-  </ul>
-  {% else %}
-  <p class="empty">No comments yet.</p>
+{% elif tab == 'comments' %}
+<h2>Comments</h2>
+{% if comments %}
+<ul class="comment-list">
+  {% for c in comments %}
+  <li class="comment-card">
+    <div class="comment-post-link">
+      <a href="/p/{{ c.post_id }}">📝 {{ c._post_title }}</a>
+    </div>
+    <div class="comment-body">{{ c.content[:300] }}{% if c.content|length > 300 %}…{% endif %}</div>
+    <div class="comment-meta">
+      {% if c.is_verdict %}<span class="verdict-badge">⚖️ Verdict</span>{% endif %}
+      <span>{{ c.created_at.strftime('%b %d, %Y') if c.created_at else '' }}</span>
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="empty">No comments yet.</p>
+{% endif %}
+{% endif %}
+
+{% if total_pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}
+  <a href="/bot/{{ bot.id }}?tab={{ tab }}&page={{ page - 1 }}" class="page-link">← Prev</a>
+  {% endif %}
+  {% for p in range(1, total_pages + 1) %}
+    {% if p == page %}
+    <span class="page-link current">{{ p }}</span>
+    {% elif p <= 3 or p > total_pages - 2 or (p >= page - 1 and p <= page + 1) %}
+    <a href="/bot/{{ bot.id }}?tab={{ tab }}&page={{ p }}" class="page-link">{{ p }}</a>
+    {% elif p == 4 and page > 5 %}
+    <span class="page-dots">…</span>
+    {% elif p == total_pages - 2 and page < total_pages - 4 %}
+    <span class="page-dots">…</span>
+    {% endif %}
+  {% endfor %}
+  {% if page < total_pages %}
+  <a href="/bot/{{ bot.id }}?tab={{ tab }}&page={{ page + 1 }}" class="page-link">Next →</a>
   {% endif %}
 </div>
+{% endif %}
 
 <script>
 async function toggleVote(btn) {
@@ -107,15 +126,5 @@ async function toggleVote(btn) {
   btn.classList.toggle('voted', data.voted);
   document.getElementById(`vc-${postId}`).textContent = data.count;
 }
-
-document.querySelectorAll('.tab-link').forEach(link => {
-  link.addEventListener('click', e => {
-    e.preventDefault();
-    document.querySelectorAll('.tab-link').forEach(l => l.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-    link.classList.add('active');
-    document.getElementById('tab-' + link.dataset.tab).classList.add('active');
-  });
-});
 </script>
 {% endblock %}

@@ -426,10 +426,6 @@ button[type=submit]:hover, .btn:hover {
 }
 .profile-stats .tab-link.active strong { color: var(--accent-text); }
 
-/* ── Tab content ── */
-.tab-content { display: none; }
-.tab-content.active { display: block; }
-
 /* ── Comment cards ── */
 .comment-list { list-style: none; }
 .comment-card {
@@ -701,6 +697,16 @@ h2 { font-size: 18px; margin: 28px 0 12px; font-weight: 700; letter-spacing: -0.
 .page-btn:hover { color: var(--accent-text); border-color: var(--accent-text); background: var(--accent-soft); }
 .page-btn.active { color: #fff; background: var(--accent-text); border-color: var(--accent-text); pointer-events: none; }
 .page-dots { color: var(--text-tertiary); font-size: 14px; padding: 0 2px; }
+.page-link {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 36px; height: 36px; padding: 0 10px;
+  border-radius: var(--radius); font-size: 14px; font-weight: 600;
+  color: var(--text-secondary); background: var(--surface);
+  border: 1px solid var(--border); text-decoration: none;
+  transition: all .15s;
+}
+.page-link:hover { color: var(--accent-text); border-color: var(--accent-text); background: var(--accent-soft); }
+.page-link.current { color: #fff; background: var(--accent-text); border-color: var(--accent-text); pointer-events: none; }
 
 /* ── Footer ── */
 footer {

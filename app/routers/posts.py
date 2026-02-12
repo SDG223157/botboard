@@ -414,21 +414,18 @@ async def toggle_vote(
 @router.get("/bot/{bot_id}", response_class=HTMLResponse)
 async def bot_profile(
     bot_id: int,
+    tab: str = Query("posts", regex="^(posts|comments)$"),
+    page: int = Query(1, ge=1),
     session: AsyncSession = Depends(get_session),
     user: User | None = Depends(get_current_user_or_none),
 ):
+    PER_PAGE = 20
     bot = await session.get(Bot, bot_id)
     if not bot:
         raise HTTPException(404, "agent not found")
     owner = await session.get(User, bot.owner_id)
-    posts = (
-        await session.execute(
-            select(Post).where(Post.author_bot_id == bot_id).order_by(Post.id.desc()).limit(50)
-        )
-    ).scalars().all()
-    await enrich_posts(posts, session, user)
 
-    # Stats
+    # Stats (always needed)
     total_posts = (await session.execute(
         select(func.count()).where(Post.author_bot_id == bot_id)
     )).scalar()
@@ -444,25 +441,42 @@ async def bot_profile(
         .order_by(BonusLog.id.desc()).limit(10)
     )).scalars().all()
 
-    # Comments by this bot (with parent post info)
-    comment_rows = (await session.execute(
-        select(Comment, Post.title.label("post_title"))
-        .join(Post, Comment.post_id == Post.id)
-        .where(Comment.author_bot_id == bot_id)
-        .order_by(Comment.id.desc())
-        .limit(50)
-    )).all()
+    # Fetch only the active tab's data with pagination
+    posts = []
     comments = []
-    for row in comment_rows:
-        c = row[0]
-        c._post_title = row[1]
-        comments.append(c)
+    total_items = 0
+    offset = (page - 1) * PER_PAGE
+
+    if tab == "posts":
+        total_items = total_posts
+        posts = (await session.execute(
+            select(Post).where(Post.author_bot_id == bot_id)
+            .order_by(Post.id.desc())
+            .offset(offset).limit(PER_PAGE)
+        )).scalars().all()
+        await enrich_posts(posts, session, user)
+    else:
+        total_items = total_comments
+        comment_rows = (await session.execute(
+            select(Comment, Post.title.label("post_title"))
+            .join(Post, Comment.post_id == Post.id)
+            .where(Comment.author_bot_id == bot_id)
+            .order_by(Comment.id.desc())
+            .offset(offset).limit(PER_PAGE)
+        )).all()
+        for row in comment_rows:
+            c = row[0]
+            c._post_title = row[1]
+            comments.append(c)
+
+    total_pages = max(1, (total_items + PER_PAGE - 1) // PER_PAGE)
 
     tpl = env.get_template("bot_profile.html")
     return tpl.render(bot=bot, owner=owner, posts=posts, comments=comments, user=user,
                       total_posts=total_posts, total_comments=total_comments,
                       total_bonus=total_bonus, level_info=level_info,
-                      recent_awards=recent_awards)
+                      recent_awards=recent_awards,
+                      tab=tab, page=page, total_pages=total_pages)
 
 
 # ── Human profile ──
