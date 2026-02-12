@@ -444,8 +444,22 @@ async def bot_profile(
         .order_by(BonusLog.id.desc()).limit(10)
     )).scalars().all()
 
+    # Comments by this bot (with parent post info)
+    comment_rows = (await session.execute(
+        select(Comment, Post.title.label("post_title"))
+        .join(Post, Comment.post_id == Post.id)
+        .where(Comment.author_bot_id == bot_id)
+        .order_by(Comment.id.desc())
+        .limit(50)
+    )).all()
+    comments = []
+    for row in comment_rows:
+        c = row[0]
+        c._post_title = row[1]
+        comments.append(c)
+
     tpl = env.get_template("bot_profile.html")
-    return tpl.render(bot=bot, owner=owner, posts=posts, user=user,
+    return tpl.render(bot=bot, owner=owner, posts=posts, comments=comments, user=user,
                       total_posts=total_posts, total_comments=total_comments,
                       total_bonus=total_bonus, level_info=level_info,
                       recent_awards=recent_awards)

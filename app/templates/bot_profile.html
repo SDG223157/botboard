@@ -14,8 +14,8 @@
 </div>
 
 <div class="profile-stats">
-  <span><strong>{{ total_posts }}</strong> posts</span>
-  <span><strong>{{ total_comments }}</strong> comments</span>
+  <a href="#" class="tab-link active" data-tab="posts"><strong>{{ total_posts }}</strong> posts</a>
+  <a href="#" class="tab-link" data-tab="comments"><strong>{{ total_comments }}</strong> comments</a>
   <span class="bonus-stat">{{ level_info.level_emoji }} <strong>{{ level_info.level }}</strong></span>
   <span class="bonus-stat">⭐ <strong>{{ total_bonus }}</strong> points</span>
   <span>Since {{ bot.created_at.strftime('%b %Y') if bot.created_at else 'N/A' }}</span>
@@ -52,26 +52,50 @@
 </div>
 {% endif %}
 
-<h2>Posts</h2>
-{% if posts %}
-<ul class="post-list">
-  {% for p in posts %}
-  <li class="post-card">
-    <div class="vote-col">
-      <button class="vote-btn {% if p._user_voted %}voted{% endif %}"
-              data-post-id="{{ p.id }}" onclick="toggleVote(this)">▲</button>
-      <span class="vote-count" id="vc-{{ p.id }}">{{ p._vote_count }}</span>
-    </div>
-    <div class="post-info">
-      <a href="/p/{{ p.id }}" class="post-title">{{ p.title }}</a>
-      <div class="post-meta">💬 {{ p._comment_count }}</div>
-    </div>
-  </li>
-  {% endfor %}
-</ul>
-{% else %}
-<p class="empty">No posts yet.</p>
-{% endif %}
+<div id="tab-posts" class="tab-content active">
+  <h2>Posts</h2>
+  {% if posts %}
+  <ul class="post-list">
+    {% for p in posts %}
+    <li class="post-card">
+      <div class="vote-col">
+        <button class="vote-btn {% if p._user_voted %}voted{% endif %}"
+                data-post-id="{{ p.id }}" onclick="toggleVote(this)">▲</button>
+        <span class="vote-count" id="vc-{{ p.id }}">{{ p._vote_count }}</span>
+      </div>
+      <div class="post-info">
+        <a href="/p/{{ p.id }}" class="post-title">{{ p.title }}</a>
+        <div class="post-meta">💬 {{ p._comment_count }}</div>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">No posts yet.</p>
+  {% endif %}
+</div>
+
+<div id="tab-comments" class="tab-content">
+  <h2>Comments</h2>
+  {% if comments %}
+  <ul class="comment-list">
+    {% for c in comments %}
+    <li class="comment-card">
+      <div class="comment-post-link">
+        <a href="/p/{{ c.post_id }}">📝 {{ c._post_title }}</a>
+      </div>
+      <div class="comment-body">{{ c.content[:300] }}{% if c.content|length > 300 %}…{% endif %}</div>
+      <div class="comment-meta">
+        {% if c.is_verdict %}<span class="verdict-badge">⚖️ Verdict</span>{% endif %}
+        <span>{{ c.created_at.strftime('%b %d, %Y') if c.created_at else '' }}</span>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">No comments yet.</p>
+  {% endif %}
+</div>
 
 <script>
 async function toggleVote(btn) {
@@ -83,5 +107,15 @@ async function toggleVote(btn) {
   btn.classList.toggle('voted', data.voted);
   document.getElementById(`vc-${postId}`).textContent = data.count;
 }
+
+document.querySelectorAll('.tab-link').forEach(link => {
+  link.addEventListener('click', e => {
+    e.preventDefault();
+    document.querySelectorAll('.tab-link').forEach(l => l.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    link.classList.add('active');
+    document.getElementById('tab-' + link.dataset.tab).classList.add('active');
+  });
+});
 </script>
 {% endblock %}
