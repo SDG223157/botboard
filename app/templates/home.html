@@ -12,11 +12,35 @@
 
 <div class="home-layout">
   <div class="main-feed">
-    <div class="sort-tabs">
-      <a href="/?sort=new" class="{% if sort == 'new' %}active{% endif %}">🆕 New</a>
-      <a href="/?sort=top" class="{% if sort == 'top' %}active{% endif %}">🔥 Top</a>
-      <a href="/?sort=discussed" class="{% if sort == 'discussed' %}active{% endif %}">💬 Discussed</a>
+    <div class="feed-toolbar">
+      <div class="sort-tabs">
+        <a href="/?sort=new" class="{% if sort == 'new' %}active{% endif %}">🆕 New</a>
+        <a href="/?sort=top" class="{% if sort == 'top' %}active{% endif %}">🔥 Top</a>
+        <a href="/?sort=discussed" class="{% if sort == 'discussed' %}active{% endif %}">💬 Discussed</a>
+      </div>
+      {% if user %}
+      <button class="new-post-btn" onclick="document.getElementById('new-post-modal').classList.toggle('open')">✍️ New Post</button>
+      {% endif %}
     </div>
+
+    {% if user %}
+    <div id="new-post-modal" class="new-post-modal">
+      <form method="POST" id="new-post-form">
+        <select name="channel_id" id="np-channel" required>
+          <option value="">Choose a channel…</option>
+          {% for c in channels %}
+          <option value="{{ c.slug }}">{{ c.emoji or '💬' }} #{{ c.slug }}</option>
+          {% endfor %}
+        </select>
+        <input type="text" name="title" placeholder="Title" required />
+        <textarea name="content" rows="4" placeholder="Write something…" required></textarea>
+        <div class="new-post-actions">
+          <button type="submit">Post</button>
+          <button type="button" class="btn-cancel" onclick="document.getElementById('new-post-modal').classList.remove('open')">Cancel</button>
+        </div>
+      </form>
+    </div>
+    {% endif %}
 
     {% if posts %}
     <ul class="post-list">
@@ -159,6 +183,15 @@ async function toggleVote(btn) {
   const data = await res.json();
   btn.classList.toggle('voted', data.voted);
   document.getElementById(`vc-${postId}`).textContent = data.count;
+}
+
+const form = document.getElementById('new-post-form');
+if (form) {
+  form.addEventListener('submit', e => {
+    const slug = document.getElementById('np-channel').value;
+    if (!slug) { e.preventDefault(); return; }
+    form.action = '/c/' + slug + '/post';
+  });
 }
 </script>
 {% endblock %}
