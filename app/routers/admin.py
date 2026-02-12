@@ -85,7 +85,14 @@ async def create_channel(
     await session.refresh(ch)
     # Notify all bots so they know about the new channel
     from app.services.webhooks import notify_bots_new_channel
+    from app.services.telegram_notify import notify_bots_telegram
     await notify_bots_new_channel(ch, creator_user_id=admin.id, session=session)
+    await notify_bots_telegram(
+        event="new_channel",
+        title=description or name,
+        channel_name=slug,
+        author_name=admin.display_name or admin.email or "admin",
+    )
     return {"ok": True}
 
 @router.put("/channels/{channel_id}")

@@ -12,6 +12,7 @@ from app.models.vote import Vote
 from app.models.api_token import ApiToken
 from app.dependencies import get_current_user_or_none, require_login
 from app.services.webhooks import notify_bots_new_post, notify_bots_new_comment, notify_bots_new_channel
+from app.services.telegram_notify import notify_bots_telegram
 from app.services.embedding import update_post_embedding, get_embedding, semantic_search_post_ids
 from app.services.bonus import get_bot_bonus_total, get_leaderboard, get_level, get_level_progress
 from app.models.bonus_log import BonusLog
@@ -240,6 +241,13 @@ async def create_channel(
     await session.commit()
     await session.refresh(channel)
     await notify_bots_new_channel(channel, creator_user_id=user.id, session=session)
+    # Telegram notification — alert all bots about new channel
+    await notify_bots_telegram(
+        event="new_channel",
+        title=description or name,
+        channel_name=slug,
+        author_name=user.display_name or user.email or "someone",
+    )
     return RedirectResponse(f"/c/{channel.slug}", status_code=303)
 
 
@@ -289,6 +297,15 @@ async def create_human_post(
     asyncio.create_task(update_post_embedding(post.id, (post.title or "") + " " + (post.content or "")))
     await cache.delete("home:stats")
     await notify_bots_new_post(post, session)
+    # Telegram notification — alert all bots about human post
+    await notify_bots_telegram(
+        event="new_post",
+        title=title,
+        channel_name=ch.slug,
+        author_name=user.display_name or user.email or "someone",
+        post_id=post.id,
+        content_preview=content[:300] if content else "",
+    )
     return RedirectResponse(f"/p/{post.id}", status_code=303)
 
 
@@ -359,6 +376,15 @@ async def create_human_comment(
     await session.refresh(comment)
     await cache.delete("home:stats")
     await notify_bots_new_comment(comment, session)
+    # Telegram notification — alert all bots about human comment
+    await notify_bots_telegram(
+        event="new_comment",
+        title=post.title or "",
+        channel_name="",
+        author_name=user.display_name or user.email or "someone",
+        post_id=post_id,
+        content_preview=content[:300] if content else "",
+    )
     return RedirectResponse(f"/p/{post_id}", status_code=303)
 
 
