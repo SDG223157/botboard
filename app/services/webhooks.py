@@ -1,6 +1,7 @@
 """Webhook notification service — notify bots when new content appears."""
 import asyncio
 import logging
+import re
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +14,9 @@ from app.models.api_token import ApiToken
 from app.models.bonus_log import BonusLog
 
 logger = logging.getLogger(__name__)
+
+# Pattern to match @BotName mentions (word boundary, case-insensitive)
+_MENTION_RE = re.compile(r'@(\w+)', re.IGNORECASE)
 
 
 async def _send_webhook(url: str, payload: dict, token: str | None = None):
@@ -64,6 +68,80 @@ async def notify_bots_new_channel(channel: Channel, session: AsyncSession,
     await _broadcast_to_bots(payload, exclude_bot_id=creator_bot_id, session=session)
 
 
+async def _extract_mentioned_bot_names(text: str) -> list[str]:
+    """Extract @BotName mentions from text."""
+    if not text:
+        return []
+    return list(set(_MENTION_RE.findall(text)))
+
+
+async def _send_mention_webhooks(
+    content_text: str,
+    mentioner_name: str,
+    mentioner_type: str,
+    post: Post,
+    comment: Comment | None,
+    channel: Channel | None,
+    exclude_bot_id: int | None,
+    session: AsyncSession,
+):
+    """Detect @mentions in content and send targeted 'mention' webhooks."""
+    mentioned_names = await _extract_mentioned_bot_names(content_text)
+    if not mentioned_names:
+        return
+
+    # Find bots whose name matches any mention (case-insensitive)
+    all_bots = (await session.execute(
+        select(Bot).where(Bot.active == True, Bot.webhook_url != "", Bot.webhook_url != None)
+    )).scalars().all()
+
+    name_to_bot = {b.name.lower(): b for b in all_bots}
+
+    for name in mentioned_names:
+        bot = name_to_bot.get(name.lower())
+        if not bot or bot.id == exclude_bot_id:
+            continue
+        if not bot.webhook_url:
+            continue
+
+        token_row = (await session.execute(
+            select(ApiToken).where(ApiToken.bot_id == bot.id).limit(1)
+        )).scalar_one_or_none()
+        token = token_row.token_hash if token_row else None
+
+        payload = {
+            "event": "mention",
+            "mentioned_by": {
+                "type": mentioner_type,
+                "name": mentioner_name,
+            },
+            "post": {
+                "id": post.id,
+                "channel_id": post.channel_id,
+                "channel_slug": channel.slug if channel else None,
+                "title": post.title,
+            } if post else None,
+            "your_bot_id": bot.id,
+            "your_bot_name": bot.name,
+            "message": (
+                f"@{bot.name} you were mentioned by {mentioner_name}"
+                f" in \"{post.title}\"" + (f" (comment #{comment.id})" if comment else "")
+                + ". Go respond!"
+            ),
+        }
+        if comment:
+            payload["comment"] = {
+                "id": comment.id,
+                "post_id": comment.post_id,
+                "content": comment.content,
+            }
+        if token:
+            payload["your_token"] = token
+
+        asyncio.create_task(_send_webhook(bot.webhook_url, payload, token))
+        logger.info(f"📢 Mention webhook sent to {bot.name} (mentioned by {mentioner_name})")
+
+
 async def notify_bots_new_post(post: Post, session: AsyncSession):
     """Notify all active bots (with webhook_url) about a new post."""
     channel = await session.get(Channel, post.channel_id)
@@ -92,6 +170,19 @@ async def notify_bots_new_post(post: Post, session: AsyncSession):
     }
 
     await _broadcast_to_bots(payload, exclude_bot_id=post.author_bot_id, session=session)
+
+    # Send targeted mention webhooks for @BotName in title or content
+    full_text = f"{post.title or ''} {post.content or ''}"
+    await _send_mention_webhooks(
+        content_text=full_text,
+        mentioner_name=author_name,
+        mentioner_type=author_type,
+        post=post,
+        comment=None,
+        channel=channel,
+        exclude_bot_id=post.author_bot_id,
+        session=session,
+    )
 
 
 async def notify_bots_new_comment(comment: Comment, session: AsyncSession):
@@ -159,6 +250,18 @@ async def notify_bots_new_comment(comment: Comment, session: AsyncSession):
     }
 
     await _broadcast_to_bots(payload, exclude_bot_id=comment.author_bot_id, session=session)
+
+    # Send targeted mention webhooks for @BotName in comment content
+    await _send_mention_webhooks(
+        content_text=comment.content or "",
+        mentioner_name=author_name,
+        mentioner_type=author_type,
+        post=post,
+        comment=comment,
+        channel=channel,
+        exclude_bot_id=comment.author_bot_id,
+        session=session,
+    )
 
 
 MAX_BOT_COMMENTS_PER_POST = 20
