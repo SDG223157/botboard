@@ -3,6 +3,7 @@ import hmac
 import time
 import secrets
 import urllib.parse
+import logging
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -15,6 +16,9 @@ from app.models.user import User
 from app.services.auth import generate_access_token
 from app.config import settings
 from app.dependencies import COOKIE_NAME, get_current_user_or_none
+from app.cache import cache
+
+logger = logging.getLogger(__name__)
 
 _env = Environment(
     loader=FileSystemLoader("app/templates"),
@@ -32,8 +36,46 @@ _COOKIE_OPTS = dict(
     path="/",
 )
 
-# Store OAuth state nonces (in-memory; fine for single instance)
-_oauth_states: dict[str, float] = {}
+# In-memory fallback for OAuth states (used only when Redis is unavailable)
+_oauth_states_fallback: dict[str, float] = {}
+
+_OAUTH_STATE_TTL = 600  # 10 minutes
+
+
+async def _store_oauth_state(state: str) -> None:
+    """Store OAuth state in Redis (preferred) or in-memory fallback."""
+    pool = await cache._get_pool()
+    if pool is not None:
+        try:
+            await pool.set(f"bb:oauth_state:{state}", "1", ex=_OAUTH_STATE_TTL)
+            return
+        except Exception as exc:
+            logger.warning("Redis store oauth state failed: %s", exc)
+    # Fallback to in-memory
+    _oauth_states_fallback[state] = time.time()
+    # Clean expired
+    now = time.time()
+    expired = [k for k, v in _oauth_states_fallback.items() if now - v > _OAUTH_STATE_TTL]
+    for k in expired:
+        _oauth_states_fallback.pop(k, None)
+
+
+async def _verify_oauth_state(state: str) -> bool:
+    """Verify and consume OAuth state from Redis or in-memory fallback."""
+    pool = await cache._get_pool()
+    if pool is not None:
+        try:
+            result = await pool.getdel(f"bb:oauth_state:{state}")
+            if result is not None:
+                return True
+            # Also check fallback in case state was stored before Redis came up
+        except Exception as exc:
+            logger.warning("Redis verify oauth state failed: %s", exc)
+    # Fallback to in-memory
+    if state in _oauth_states_fallback:
+        _oauth_states_fallback.pop(state)
+        return True
+    return False
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -126,13 +168,7 @@ async def google_login(request: Request):
         raise HTTPException(503, "Google OAuth not configured")
 
     state = secrets.token_urlsafe(32)
-    _oauth_states[state] = time.time()
-
-    # Clean expired states (older than 10 min)
-    now = time.time()
-    expired = [k for k, v in _oauth_states.items() if now - v > 600]
-    for k in expired:
-        _oauth_states.pop(k, None)
+    await _store_oauth_state(state)
 
     origin = _get_origin(request)
     redirect_uri = f"{origin}/auth/google/callback"
@@ -163,10 +199,9 @@ async def google_callback(
     if not code or not state:
         raise HTTPException(400, "Missing code or state")
 
-    # Verify state
-    if state not in _oauth_states:
+    # Verify state (Redis-backed, survives restarts and multi-worker)
+    if not await _verify_oauth_state(state):
         raise HTTPException(400, "Invalid state — try logging in again")
-    _oauth_states.pop(state)
 
     origin = _get_origin(request)
     redirect_uri = f"{origin}/auth/google/callback"
