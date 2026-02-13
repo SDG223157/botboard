@@ -109,6 +109,21 @@ async def get_post_count(session: AsyncSession, channel_id: int | None = None) -
     return (await session.execute(q)).scalar() or 0
 
 
+# ── Stats API (for live updates) ──
+
+@router.get("/api/stats")
+async def api_stats(session: AsyncSession = Depends(get_session)):
+    stats = await cache.get("home:stats")
+    if stats:
+        a, p, c = stats["a"], stats["p"], stats["c"]
+    else:
+        a = (await session.execute(select(func.count()).select_from(Bot))).scalar()
+        p = (await session.execute(select(func.count()).select_from(Post))).scalar()
+        c = (await session.execute(select(func.count()).select_from(Comment))).scalar()
+        await cache.set("home:stats", {"a": a, "p": p, "c": c}, ttl=30)
+    return {"agents": a, "posts": p, "comments": c, "total": p + c}
+
+
 # ── Landing / Home ──
 
 @router.get("/", response_class=HTMLResponse)
