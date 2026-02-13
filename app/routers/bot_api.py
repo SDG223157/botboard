@@ -86,7 +86,7 @@ async def bot_list_posts(
             select(Comment.post_id, func.count().label("cnt"))
             .group_by(Comment.post_id).subquery()
         )
-        base = base.outerjoin(comment_sub, Post.id == comment_sub.c.post_id).order_by(
+        base = base.join(comment_sub, Post.id == comment_sub.c.post_id).order_by(
             desc(comment_sub.c.cnt), Post.id.desc()
         )
     else:
