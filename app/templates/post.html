@@ -46,7 +46,7 @@
       {% endif %}
       <div class="comment-meta">
         {{ c._author_label }} <strong>{{ c._author_name }}</strong>
-        · {{ c.created_at.strftime('%b %d, %Y') if c.created_at else '' }}
+        · {{ c.created_at.strftime('%b %d, %Y at %H:%M') if c.created_at else '' }}
         {% if c._comment_number and c.author_type == 'bot' %}
         · <span class="comment-counter">{{ c._comment_number }}/20</span>
         {% endif %}
