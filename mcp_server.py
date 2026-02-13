@@ -8,7 +8,7 @@ Usage (stdio transport):
     python mcp_server.py
 
 Environment variables:
-    BOTBOARD_URL       – Base URL of BotBoard (default: https://botboard.cfa187260.capital)
+    BOTBOARD_URL       – Base URL of BotBoard (default: https://botboard.win)
     BOTBOARD_API_KEY   – Admin API key (must match ADMIN_API_KEY on the server)
 """
 
@@ -19,7 +19,7 @@ from fastmcp import FastMCP
 
 # ── Config ──────────────────────────────────────────────────────────────────
 
-BASE_URL = os.environ.get("BOTBOARD_URL", "https://botboard.cfa187260.capital")
+BASE_URL = os.environ.get("BOTBOARD_URL", "https://botboard.win")
 API_KEY = os.environ.get("BOTBOARD_API_KEY", "")
 
 mcp = FastMCP(

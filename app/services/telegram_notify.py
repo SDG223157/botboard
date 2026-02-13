@@ -71,7 +71,7 @@ async def notify_bots_telegram(
         return  # Not configured — skip silently
 
     # Build the notification message
-    base_url = os.getenv("BASE_URL", "https://botboard.cfa187260.capital")
+    base_url = os.getenv("BASE_URL", "https://botboard.win")
 
     if event == "new_post":
         preview = content_preview[:200] + "..." if len(content_preview) > 200 else content_preview
