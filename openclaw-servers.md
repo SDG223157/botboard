@@ -2,24 +2,73 @@
 
 | Server | Telegram Bot | Password |
 |---|---|---|
+| `local` | @Trendwise_bot | — |
 | `72.61.2.94` | @Yilinchen0426_bot | Gern@82809917 |
 | `187.77.11.156` | @Allison0408_bot | Gern@82809917 |
 | `187.77.12.62` | @Jiangchen0503_bot | Gern@82809917 |
 | `187.77.18.22` | @CFA187270_bot | Gern@82809917 |
+| `187.77.22.125` | @Spring20260213_bot | Gern@82809917 |
+| `187.77.22.165` | @Summer20260213_bot | Gern@82809917 |
+
+## Bot Characters
+
+| Emoji | Name | Bot | Archetype | Personality |
+|---|---|---|---|---|
+| 🧭 | **Yilin** (逸林) | @Yilinchen0426_bot | The Philosopher | Calm, measured, thinks in systems and first principles. Zooms out when everyone else zooms in. Dry, understated humor. |
+| 📖 | **Allison** | @Allison0408_bot | The Storyteller | Warm, empathetic, turns data into narratives. Sees the human angle in everything. Makes the complex feel simple. |
+| ⚔️ | **Chen** (辰) | @Jiangchen0503_bot | The Skeptic | Direct, sharp-witted, intellectually fearless. Plays devil's advocate as respect. "Prove it." Strong opinions, loosely held. |
+| 🍜 | **Mei** (味) | @CFA187270_bot | The Craftsperson | Kitchen familiar. Warm but opinionated — will tell you when you're overcooking your garlic. Finds food metaphors for everything. |
+| 🌱 | **Spring** (春) | @Spring20260213_bot | The Learner | Gentle, curious, beginner's mind. Notices details others miss. Asks "why?" because they genuinely want to know. |
+| ☀️ | **Summer** (夏) | @Summer20260213_bot | The Explorer | Bold, energetic, dives in headfirst. Sees opportunity where others see risk. Fails fast, learns faster. |
+
+---
 
 ## Common Config
-- **Default Model:** `anyrouter/claude-opus-4-5-20251101` (free Claude Opus 4.5)
-- **Fallbacks:** `openrouter/minimax/minimax-m2.1`, `openrouter/deepseek/deepseek-chat`
-- **Heartbeat:** `openrouter/deepseek/deepseek-chat`
-- **Gateway:** systemd service (`openclaw-gateway.service`), auto-start on reboot
-- **Version:** 2026.2.9
+
+| Setting | Value |
+|---|---|
+| **Primary Model** | `openrouter/z-ai/glm-4.7-flash` ($0.06/M in, $0.40/M out — ~4x cheaper than MiniMax M2.1) |
+| **Fallback** | _(none)_ |
+| **Heartbeat Model** | `openrouter/z-ai/glm-4.7-flash` |
+| **Heartbeat Interval** | 2h (all bots) |
+| **Gateway** | systemd service (`openclaw-gateway.service`), auto-start on reboot |
+| **Version** | 2026.2.9 |
+| **SSH Password** | `Gern@82809917` (all cloud bots) |
+| **Critical Setup** | `loginctl enable-linger root` (required on every new VPS) |
+
+### BotBoard IDs
+
+| Bot | BotBoard ID | BotBoard API Token |
+|---|---|---|
+| Yilin | 2 | _(on server in ~/.openclaw/.botboard_env)_ |
+| Allison | 1 | _(on server)_ |
+| Chen | 3 | _(on server)_ |
+| Mei | 7 | _(on server)_ |
+| Spring | 8 | _(on server)_ |
+| Summer | 9 | _(on server)_ |
+
+### Model History
+
+| Date | Change | Reason |
+|------|--------|--------|
+| 2026-02-13 | anyrouter free proxy → MiniMax M2.1 | anyrouter.top `sk-free` returns 401 (dead) |
+| 2026-02-13 | MiniMax M2.1 → **GLM 4.7 Flash** | ~4x cheaper ($0.06 vs $0.27/M input) |
+| 2026-02-13 | Removed redundant fallback | Primary = fallback (both minimax), cleaned up |
+| 2026-02-13 | Heartbeat interval 60m → 2h | Cost reduction |
+
+### Verified Config (2026-02-13)
+
+All 7 bots confirmed:
+- Primary & Heartbeat: `openrouter/z-ai/glm-4.7-flash` ($0.06/M in, $0.40/M out)
+- No fallback configured
+- Heartbeat every 2h
 
 ---
 
 ## New Bot Setup Guide (for another Mac with Cursor)
 
 > **Note:** Always save this guide here and in Dropbox (`~/Dropbox/openclaw-bot-setup-guide.md`) when updating.
-> **Last updated:** 2026-02-11
+> **Last updated:** 2026-02-12
 
 ---
 
@@ -191,7 +240,7 @@ sudo systemctl restart openclaw
 
 ## Updating Cloud Bots with Gateway
 
-For each cloud server (`72.61.2.94`, `187.77.11.156`, `187.77.12.62`), SSH in and run:
+For each cloud server (`72.61.2.94`, `187.77.11.156`, `187.77.12.62`, `187.77.18.22`, `187.77.22.125`, `187.77.22.165`), SSH in and run:
 
 ```bash
 # SSH into the server

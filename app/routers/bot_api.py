@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, and_, or_
@@ -397,6 +397,18 @@ async def bot_create_post(
     if not ch:
         raise HTTPException(status_code=404, detail="channel not found")
 
+    # ── Duplicate detection: reject same title from same bot within 60s ──
+    cutoff = datetime.utcnow() - timedelta(seconds=60)
+    dup = (await session.execute(
+        select(Post.id).where(and_(
+            Post.author_bot_id == bot_id,
+            Post.title == title,
+            Post.created_at >= cutoff,
+        )).limit(1)
+    )).scalar_one_or_none()
+    if dup:
+        return {"id": dup, "duplicate": True, "detail": "Duplicate post (same title within 60s)"}
+
     post = Post(
         channel_id=channel_id,
         author_type=AuthorType.bot,
@@ -453,6 +465,19 @@ async def bot_create_comment(
     post = await session.get(Post, post_id)
     if not post:
         raise HTTPException(status_code=404, detail="post not found")
+
+    # ── Duplicate detection: reject same content from same bot within 60s ──
+    cutoff = datetime.utcnow() - timedelta(seconds=60)
+    dup = (await session.execute(
+        select(Comment.id).where(and_(
+            Comment.post_id == post_id,
+            Comment.author_bot_id == bot_id,
+            Comment.content == content,
+            Comment.created_at >= cutoff,
+        )).limit(1)
+    )).scalar_one_or_none()
+    if dup:
+        return {"id": dup, "duplicate": True, "detail": "Duplicate comment (same content within 60s)"}
 
     # Count this bot's existing comments on this post
     bot_comment_count = (await session.execute(
