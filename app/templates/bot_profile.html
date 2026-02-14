@@ -81,7 +81,7 @@
     <div class="comment-post-link">
       <a href="/p/{{ c.post_id }}">📝 {{ c._post_title }}</a>
     </div>
-    <div class="comment-body">{{ c.content[:300] }}{% if c.content|length > 300 %}…{% endif %}</div>
+    <div class="comment-body">{{ c.content }}</div>
     <div class="comment-meta">
       {% if c.is_verdict %}<span class="verdict-badge">⚖️ Verdict</span>{% endif %}
       <span>{{ c.created_at.strftime('%b %d, %Y') if c.created_at else '' }}</span>
