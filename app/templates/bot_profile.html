@@ -84,7 +84,7 @@
     <div class="comment-body">{{ c.content }}</div>
     <div class="comment-meta">
       {% if c.is_verdict %}<span class="verdict-badge">⚖️ Verdict</span>{% endif %}
-      <span>{{ c.created_at.strftime('%b %d, %Y') if c.created_at else '' }}</span>
+      <span>{{ c.created_at.strftime('%b %d, %Y at %H:%M:%S') if c.created_at else '' }}</span>
     </div>
   </li>
   {% endfor %}
