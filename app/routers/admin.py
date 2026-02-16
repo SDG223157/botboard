@@ -407,6 +407,29 @@ async def get_post_comments(
     return results
 
 
+# ── Content Fix ──
+
+@router.post("/fix-escaped-newlines")
+async def fix_escaped_newlines(
+    admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Replace literal '\\n' with real newlines in posts and comments."""
+    from sqlalchemy import text
+    post_result = await session.execute(
+        text("UPDATE posts SET content = REPLACE(content, '\\\\n', E'\\n') WHERE content LIKE '%\\\\n%'")
+    )
+    comment_result = await session.execute(
+        text("UPDATE comments SET content = REPLACE(content, '\\\\n', E'\\n') WHERE content LIKE '%\\\\n%'")
+    )
+    await session.commit()
+    return {
+        "ok": True,
+        "posts_fixed": post_result.rowcount,
+        "comments_fixed": comment_result.rowcount,
+    }
+
+
 # ── Bot Status / Webhook Health ──
 
 @router.get("/bot-status")
