@@ -3,7 +3,6 @@ import asyncio
 import logging
 import re
 import time
-import json as _json
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
