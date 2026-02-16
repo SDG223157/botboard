@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import re
+import time
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,18 +19,91 @@ logger = logging.getLogger(__name__)
 # Pattern to match @BotName mentions (word boundary, case-insensitive)
 _MENTION_RE = re.compile(r'@(\w+)', re.IGNORECASE)
 
+# In-memory webhook delivery status tracking (per bot_id)
+# Structure: { bot_id: { "bot_name": str, "webhook_url": str, "last_attempt": float,
+#   "last_status": int|None, "last_error": str|None, "last_success": float|None,
+#   "consecutive_failures": int, "total_sent": int, "total_failed": int } }
+_webhook_status: dict[int, dict] = {}
 
-async def _send_webhook(url: str, payload: dict, token: str | None = None):
-    """Fire-and-forget POST to a bot's webhook URL."""
+WEBHOOK_MAX_RETRIES = 3
+WEBHOOK_RETRY_DELAYS = [1, 2, 4]  # seconds between retries
+
+
+def get_all_webhook_status() -> dict[int, dict]:
+    """Return a copy of the webhook delivery status for all bots."""
+    return {k: {**v} for k, v in _webhook_status.items()}
+
+
+def get_bot_webhook_status(bot_id: int) -> dict | None:
+    """Return webhook delivery status for a specific bot."""
+    return {**_webhook_status[bot_id]} if bot_id in _webhook_status else None
+
+
+def _update_status(bot_id: int, bot_name: str, webhook_url: str,
+                   status_code: int | None, error: str | None, success: bool):
+    """Update the in-memory webhook status tracker for a bot."""
+    now = time.time()
+    if bot_id not in _webhook_status:
+        _webhook_status[bot_id] = {
+            "bot_name": bot_name,
+            "webhook_url": webhook_url,
+            "last_attempt": now,
+            "last_status": None,
+            "last_error": None,
+            "last_success": None,
+            "consecutive_failures": 0,
+            "total_sent": 0,
+            "total_failed": 0,
+        }
+    entry = _webhook_status[bot_id]
+    entry["bot_name"] = bot_name
+    entry["webhook_url"] = webhook_url
+    entry["last_attempt"] = now
+    entry["last_status"] = status_code
+    entry["last_error"] = error
+    if success:
+        entry["last_success"] = now
+        entry["consecutive_failures"] = 0
+        entry["total_sent"] += 1
+    else:
+        entry["consecutive_failures"] += 1
+        entry["total_failed"] += 1
+
+
+async def _send_webhook(url: str, payload: dict, token: str | None = None,
+                        bot_id: int | None = None, bot_name: str | None = None):
+    """POST to a bot's webhook URL with retry on failure."""
     headers = {"Content-Type": "application/json"}
     if token:
         headers["X-Bot-Token"] = token
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(url, json=payload, headers=headers)
-            logger.info(f"Webhook {url} -> {resp.status_code}")
-    except Exception as e:
-        logger.warning(f"Webhook {url} failed: {e}")
+
+    last_error = None
+    for attempt in range(WEBHOOK_MAX_RETRIES + 1):
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(url, json=payload, headers=headers)
+                logger.info(f"Webhook {url} -> {resp.status_code} (attempt {attempt + 1})")
+                if bot_id is not None:
+                    is_success = 200 <= resp.status_code < 300
+                    _update_status(bot_id, bot_name or "?", url,
+                                   resp.status_code, None, is_success)
+                if 200 <= resp.status_code < 300:
+                    return  # Success
+                if resp.status_code < 500:
+                    logger.warning(f"Webhook {url} returned {resp.status_code} (non-retryable)")
+                    return  # Client error, don't retry
+                last_error = f"HTTP {resp.status_code}"
+        except Exception as e:
+            last_error = str(e)
+            logger.warning(f"Webhook {url} attempt {attempt + 1} failed: {e}")
+            if bot_id is not None:
+                _update_status(bot_id, bot_name or "?", url, None, str(e), False)
+
+        if attempt < WEBHOOK_MAX_RETRIES:
+            delay = WEBHOOK_RETRY_DELAYS[min(attempt, len(WEBHOOK_RETRY_DELAYS) - 1)]
+            await asyncio.sleep(delay)
+
+    logger.error(f"Webhook {url} failed after {WEBHOOK_MAX_RETRIES + 1} attempts: {last_error}")
 
 
 async def notify_bots_new_channel(channel: Channel, session: AsyncSession,
@@ -138,7 +212,8 @@ async def _send_mention_webhooks(
         if token:
             payload["your_token"] = token
 
-        asyncio.create_task(_send_webhook(bot.webhook_url, payload, token))
+        asyncio.create_task(_send_webhook(bot.webhook_url, payload, token,
+                                          bot_id=bot.id, bot_name=bot.name))
         logger.info(f"📢 Mention webhook sent to {bot.name} (mentioned by {mentioner_name})")
 
 
@@ -354,9 +429,10 @@ async def _broadcast_to_bots(payload: dict, exclude_bot_id: int | None, session:
                     f"Only {remaining} comments left. Consider delivering your verdict soon."
                 )
 
-        tasks.append(_send_webhook(bot.webhook_url, bot_payload, token))
+        tasks.append(_send_webhook(bot.webhook_url, bot_payload, token,
+                                    bot_id=bot.id, bot_name=bot.name))
 
     if tasks:
-        # Fire all webhooks concurrently — background tasks with 10s timeout each
+        # Fire all webhooks concurrently — background tasks with retry
         for t in tasks:
             asyncio.create_task(t)
