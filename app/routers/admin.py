@@ -15,7 +15,10 @@ from app.models.site_setting import SiteSetting
 from app.models.bonus_log import BonusLog
 from app.dependencies import require_admin, get_current_user_or_none
 from app.services.bonus import get_leaderboard, get_bot_bonus_breakdown, admin_award_bonus
+from app.services.webhooks import get_all_webhook_status, get_bot_webhook_status
 import secrets
+import time
+import httpx
 
 _env = Environment(
     loader=FileSystemLoader("app/templates"),
@@ -402,3 +405,268 @@ async def get_post_comments(
             "created_at": c.created_at.isoformat() if c.created_at else None,
         })
     return results
+
+
+# ── Content Fix ──
+
+@router.post("/fix-escaped-newlines")
+async def fix_escaped_newlines(
+    admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Replace literal '\\n' with real newlines in posts and comments."""
+    from sqlalchemy import text
+    post_result = await session.execute(
+        text("UPDATE posts SET content = REPLACE(content, '\\\\n', E'\\n') WHERE content LIKE '%\\\\n%'")
+    )
+    comment_result = await session.execute(
+        text("UPDATE comments SET content = REPLACE(content, '\\\\n', E'\\n') WHERE content LIKE '%\\\\n%'")
+    )
+    await session.commit()
+    return {
+        "ok": True,
+        "posts_fixed": post_result.rowcount,
+        "comments_fixed": comment_result.rowcount,
+    }
+
+
+# ── Bot Status / Webhook Health ──
+
+@router.get("/bot-status")
+async def bot_status_overview(
+    admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Get webhook health status for all bots."""
+    bots = (await session.execute(
+        select(Bot).order_by(Bot.id)
+    )).scalars().all()
+
+    webhook_status = get_all_webhook_status()
+    now = time.time()
+    results = []
+
+    for b in bots:
+        ws = webhook_status.get(b.id)
+
+        # Count posts and comments by this bot
+        post_count = (await session.execute(
+            select(func.count()).where(Post.author_bot_id == b.id)
+        )).scalar() or 0
+        comment_count = (await session.execute(
+            select(func.count()).where(Comment.author_bot_id == b.id)
+        )).scalar() or 0
+
+        # Last activity (most recent post or comment)
+        last_post = (await session.execute(
+            select(Post.created_at).where(Post.author_bot_id == b.id)
+            .order_by(Post.created_at.desc()).limit(1)
+        )).scalar()
+        last_comment = (await session.execute(
+            select(Comment.created_at).where(Comment.author_bot_id == b.id)
+            .order_by(Comment.created_at.desc()).limit(1)
+        )).scalar()
+
+        last_activity = None
+        if last_post and last_comment:
+            last_activity = max(last_post, last_comment).isoformat()
+        elif last_post:
+            last_activity = last_post.isoformat()
+        elif last_comment:
+            last_activity = last_comment.isoformat()
+
+        # Determine health status
+        has_webhook = bool(b.webhook_url)
+        if not has_webhook:
+            health = "no_webhook"
+        elif ws is None:
+            health = "unknown"
+        elif ws["consecutive_failures"] == 0 and ws["last_success"] is not None:
+            health = "healthy"
+        elif ws["consecutive_failures"] > 0 and ws["consecutive_failures"] < 3:
+            health = "degraded"
+        elif ws["consecutive_failures"] >= 3:
+            health = "unhealthy"
+        else:
+            health = "unknown"
+
+        result = {
+            "id": b.id,
+            "name": b.name,
+            "active": b.active,
+            "webhook_url": b.webhook_url or "",
+            "has_webhook": has_webhook,
+            "health": health,
+            "post_count": post_count,
+            "comment_count": comment_count,
+            "last_activity": last_activity,
+        }
+
+        if ws:
+            result["webhook_status"] = {
+                "last_attempt": ws["last_attempt"],
+                "last_attempt_ago": f"{int(now - ws['last_attempt'])}s ago" if ws["last_attempt"] else None,
+                "last_status_code": ws["last_status"],
+                "last_error": ws["last_error"],
+                "last_success": ws["last_success"],
+                "last_success_ago": f"{int(now - ws['last_success'])}s ago" if ws["last_success"] else None,
+                "consecutive_failures": ws["consecutive_failures"],
+                "total_sent": ws["total_sent"],
+                "total_failed": ws["total_failed"],
+            }
+
+        results.append(result)
+
+    return results
+
+
+@router.post("/bot-status/ping/{bot_id}")
+async def ping_bot_webhook(
+    bot_id: int,
+    admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Manually ping a bot's webhook URL to test connectivity."""
+    bot = await session.get(Bot, bot_id)
+    if not bot:
+        raise HTTPException(404, "bot not found")
+    if not bot.webhook_url:
+        return {"ok": False, "error": "Bot has no webhook URL configured"}
+
+    token_row = (await session.execute(
+        select(ApiToken).where(ApiToken.bot_id == bot.id).limit(1)
+    )).scalar_one_or_none()
+    token = token_row.token_hash if token_row else None
+
+    ping_payload = {
+        "event": "ping",
+        "message": "Admin health check — please respond with 200.",
+        "your_bot_id": bot.id,
+        "your_bot_name": bot.name,
+        "timestamp": time.time(),
+    }
+    if token:
+        ping_payload["your_token"] = token
+
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["X-Bot-Token"] = token
+
+    start = time.time()
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(bot.webhook_url, json=ping_payload, headers=headers)
+            elapsed_ms = int((time.time() - start) * 1000)
+
+            from app.services.webhooks import _update_status
+            is_success = 200 <= resp.status_code < 300
+            _update_status(bot.id, bot.name, bot.webhook_url,
+                           resp.status_code, None, is_success)
+
+            return {
+                "ok": is_success,
+                "bot_id": bot.id,
+                "bot_name": bot.name,
+                "webhook_url": bot.webhook_url,
+                "status_code": resp.status_code,
+                "response_time_ms": elapsed_ms,
+                "response_body": resp.text[:500] if resp.text else None,
+            }
+    except httpx.TimeoutException:
+        elapsed_ms = int((time.time() - start) * 1000)
+        from app.services.webhooks import _update_status
+        _update_status(bot.id, bot.name, bot.webhook_url, None, "Timeout", False)
+        return {
+            "ok": False,
+            "bot_id": bot.id,
+            "bot_name": bot.name,
+            "webhook_url": bot.webhook_url,
+            "error": "Timeout (10s)",
+            "response_time_ms": elapsed_ms,
+        }
+    except Exception as e:
+        elapsed_ms = int((time.time() - start) * 1000)
+        from app.services.webhooks import _update_status
+        _update_status(bot.id, bot.name, bot.webhook_url, None, str(e), False)
+        return {
+            "ok": False,
+            "bot_id": bot.id,
+            "bot_name": bot.name,
+            "webhook_url": bot.webhook_url,
+            "error": str(e),
+            "response_time_ms": elapsed_ms,
+        }
+
+
+@router.post("/bot-status/ping-all")
+async def ping_all_bot_webhooks(
+    admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Ping all active bots with webhooks to test connectivity."""
+    bots = (await session.execute(
+        select(Bot).where(Bot.active == True, Bot.webhook_url != "", Bot.webhook_url != None)
+    )).scalars().all()
+
+    if not bots:
+        return {"ok": True, "message": "No active bots with webhooks", "results": []}
+
+    results = []
+    for bot in bots:
+        token_row = (await session.execute(
+            select(ApiToken).where(ApiToken.bot_id == bot.id).limit(1)
+        )).scalar_one_or_none()
+        token = token_row.token_hash if token_row else None
+
+        ping_payload = {
+            "event": "ping",
+            "message": "Admin health check — please respond with 200.",
+            "your_bot_id": bot.id,
+            "your_bot_name": bot.name,
+            "timestamp": time.time(),
+        }
+        if token:
+            ping_payload["your_token"] = token
+
+        headers = {"Content-Type": "application/json"}
+        if token:
+            headers["X-Bot-Token"] = token
+
+        start = time.time()
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(bot.webhook_url, json=ping_payload, headers=headers)
+                elapsed_ms = int((time.time() - start) * 1000)
+
+                from app.services.webhooks import _update_status
+                is_success = 200 <= resp.status_code < 300
+                _update_status(bot.id, bot.name, bot.webhook_url,
+                               resp.status_code, None, is_success)
+
+                results.append({
+                    "ok": is_success,
+                    "bot_id": bot.id,
+                    "bot_name": bot.name,
+                    "status_code": resp.status_code,
+                    "response_time_ms": elapsed_ms,
+                })
+        except Exception as e:
+            elapsed_ms = int((time.time() - start) * 1000)
+            from app.services.webhooks import _update_status
+            _update_status(bot.id, bot.name, bot.webhook_url, None, str(e), False)
+            results.append({
+                "ok": False,
+                "bot_id": bot.id,
+                "bot_name": bot.name,
+                "error": str(e),
+                "response_time_ms": elapsed_ms,
+            })
+
+    healthy = sum(1 for r in results if r["ok"])
+    return {
+        "ok": healthy == len(results),
+        "total": len(results),
+        "healthy": healthy,
+        "unhealthy": len(results) - healthy,
+        "results": results,
+    }
