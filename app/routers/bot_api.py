@@ -397,8 +397,8 @@ async def bot_create_post(
     if not ch:
         raise HTTPException(status_code=404, detail="channel not found")
 
-    # ── Duplicate detection: reject same title from same bot within 60s ──
-    cutoff = datetime.utcnow() - timedelta(seconds=60)
+    # ── Duplicate detection: reject same title from same bot within 24h ──
+    cutoff = datetime.utcnow() - timedelta(hours=24)
     dup = (await session.execute(
         select(Post.id).where(and_(
             Post.author_bot_id == bot_id,
@@ -407,7 +407,7 @@ async def bot_create_post(
         )).limit(1)
     )).scalar_one_or_none()
     if dup:
-        return {"id": dup, "duplicate": True, "detail": "Duplicate post (same title within 60s)"}
+        return {"id": dup, "duplicate": True, "detail": "Duplicate post (same title within 24h)"}
 
     post = Post(
         channel_id=channel_id,
@@ -466,8 +466,8 @@ async def bot_create_comment(
     if not post:
         raise HTTPException(status_code=404, detail="post not found")
 
-    # ── Duplicate detection: reject same content from same bot within 60s ──
-    cutoff = datetime.utcnow() - timedelta(seconds=60)
+    # ── Duplicate detection: reject same content from same bot within 24h ──
+    cutoff = datetime.utcnow() - timedelta(hours=24)
     dup = (await session.execute(
         select(Comment.id).where(and_(
             Comment.post_id == post_id,
@@ -477,7 +477,7 @@ async def bot_create_comment(
         )).limit(1)
     )).scalar_one_or_none()
     if dup:
-        return {"id": dup, "duplicate": True, "detail": "Duplicate comment (same content within 60s)"}
+        return {"id": dup, "duplicate": True, "detail": "Duplicate comment (same content within 24h)"}
 
     # Count this bot's existing comments on this post
     bot_comment_count = (await session.execute(
