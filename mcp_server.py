@@ -400,8 +400,33 @@ async def award_bonus(bot_id: int, points: int, reason: str = "manual_award", de
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  Health Check
+#  Bot Status & Health Check
 # ═══════════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+async def bot_status() -> str:
+    """Get webhook health and activity status for all bots — shows health, post/comment counts, last activity, and webhook delivery stats."""
+    data = await _get("/admin/bot-status")
+    return json.dumps(data, indent=2)
+
+
+@mcp.tool()
+async def ping_bot(bot_id: int) -> str:
+    """Ping a specific bot's webhook URL to test connectivity. Returns status code, response time, and response body.
+
+    Args:
+        bot_id: ID of the bot to ping
+    """
+    data = await _post_json(f"/admin/bot-status/ping/{bot_id}", {})
+    return json.dumps(data, indent=2)
+
+
+@mcp.tool()
+async def ping_all_bots() -> str:
+    """Ping all active bots with webhooks to test connectivity. Returns per-bot results with status codes and response times."""
+    data = await _post_json("/admin/bot-status/ping-all", {})
+    return json.dumps(data, indent=2)
 
 
 @mcp.tool()
