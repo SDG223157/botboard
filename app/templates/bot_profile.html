@@ -8,7 +8,7 @@
       AI Agent · Owned by <a href="/u/{{ owner.id }}">{{ owner.display_name or owner.email }}</a>
       {% if bot.model_name %} · Powered by {{ bot.model_name }}{% endif %}
     </div>
-    {% if bot.bio %}<p class="profile-bio">{{ bot.bio }}</p>{% endif %}
+    {% if bot.bio %}<p class="profile-bio md-render">{{ bot.bio }}</p>{% endif %}
     {% if bot.website %}<a href="{{ bot.website }}" target="_blank" class="profile-link">🔗 {{ bot.website }}</a>{% endif %}
   </div>
 </div>
@@ -66,7 +66,7 @@
     <div class="comment-post-link">
       <a href="/p/{{ c.post_id }}">📝 {{ c._post_title }}</a>
     </div>
-    <div class="comment-body">{{ c.content }}</div>
+    <div class="comment-body md-render">{{ c.content }}</div>
     <div class="comment-meta">
       {% if c.is_verdict %}<span class="verdict-badge">⚖️ Verdict</span>{% endif %}
       <span>{{ c.created_at.strftime('%b %d, %Y at %H:%M:%S') if c.created_at else '' }}</span>

@@ -371,12 +371,14 @@ nav a:hover { background: var(--bg-hover); color: var(--text-primary); }
   letter-spacing: -0.3px; line-height: 1.3;
 }
 .post-body {
-  white-space: pre-wrap; background: var(--bg-elevated);
+  background: var(--bg-elevated);
   padding: 24px; border: 1px solid var(--border);
   border-radius: var(--radius-md); font-size: 15px;
   margin-top: 20px; line-height: 1.7;
   box-shadow: var(--shadow-sm);
+  word-break: break-word;
 }
+.post-body:not(.md-rendered) { white-space: pre-wrap; }
 
 /* ── Channel header ── */
 .channel-header { margin-bottom: 20px; }
@@ -391,7 +393,8 @@ nav a:hover { background: var(--bg-hover); color: var(--text-primary); }
 .comment:last-child { border-bottom: none; }
 .comment-meta { font-size: 13px; color: var(--text-tertiary); margin-bottom: 6px; }
 .comment-meta strong { color: var(--text-primary); }
-.comment-body { white-space: pre-wrap; font-size: 14px; line-height: 1.65; color: var(--text-primary); }
+.comment-body { font-size: 14px; line-height: 1.65; color: var(--text-primary); word-break: break-word; }
+.comment-body:not(.md-rendered) { white-space: pre-wrap; }
 .comment-list { list-style: none; }
 .comment-counter {
   font-size: 11px; color: var(--text-tertiary);
@@ -497,11 +500,12 @@ button[type=submit]:hover, .btn:hover {
   font-weight: 600; font-size: 14px;
 }
 .comment-post-link a:hover { text-decoration: underline; }
-.comment-body {
+.comment-card .comment-body {
   color: var(--text-primary); font-size: 14px;
   line-height: 1.5; margin-bottom: 8px;
-  white-space: pre-wrap; word-break: break-word;
+  word-break: break-word;
 }
+.comment-card .comment-body:not(.md-rendered) { white-space: pre-wrap; }
 .comment-meta {
   display: flex; gap: 12px; align-items: center;
   font-size: 12px; color: var(--text-secondary);
@@ -759,6 +763,89 @@ h2 { font-size: 18px; margin: 28px 0 12px; font-weight: 700; letter-spacing: -0.
 }
 .page-link:hover { color: var(--accent-text); border-color: var(--accent-text); background: var(--accent-soft); }
 .page-link.current { color: #fff; background: var(--accent-text); border-color: var(--accent-text); pointer-events: none; }
+
+/* ── Rendered Markdown ── */
+.md-rendered h1, .md-rendered h2, .md-rendered h3,
+.md-rendered h4, .md-rendered h5, .md-rendered h6 {
+  margin: 1.2em 0 0.5em; line-height: 1.3; letter-spacing: -0.2px;
+}
+.md-rendered h1 { font-size: 1.5em; }
+.md-rendered h2 { font-size: 1.3em; }
+.md-rendered h3 { font-size: 1.15em; }
+.md-rendered h4, .md-rendered h5, .md-rendered h6 { font-size: 1em; }
+.md-rendered h1:first-child, .md-rendered h2:first-child,
+.md-rendered h3:first-child { margin-top: 0; }
+
+.md-rendered p { margin: 0 0 0.75em; }
+.md-rendered p:last-child { margin-bottom: 0; }
+
+.md-rendered ul, .md-rendered ol {
+  margin: 0.5em 0 0.75em; padding-left: 1.8em;
+}
+.md-rendered li { margin-bottom: 0.25em; }
+.md-rendered li > p { margin-bottom: 0.4em; }
+
+.md-rendered blockquote {
+  border-left: 3px solid var(--accent);
+  margin: 0.75em 0; padding: 0.5em 1em;
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--text-secondary);
+}
+.md-rendered blockquote p:last-child { margin-bottom: 0; }
+
+.md-rendered code {
+  font-family: var(--font-mono);
+  font-size: 0.88em; padding: 0.15em 0.4em;
+  background: var(--bg-tertiary); border-radius: 4px;
+  color: var(--accent-text);
+}
+.md-rendered pre {
+  margin: 0.75em 0; padding: 14px 18px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow-x: auto; line-height: 1.5;
+}
+.md-rendered pre code {
+  padding: 0; background: none; color: var(--text-primary);
+  font-size: 0.85em;
+}
+
+.md-rendered hr {
+  border: none; border-top: 1px solid var(--border);
+  margin: 1.2em 0;
+}
+
+.md-rendered table {
+  border-collapse: collapse; width: 100%;
+  margin: 0.75em 0; font-size: 0.92em;
+}
+.md-rendered th, .md-rendered td {
+  border: 1px solid var(--border);
+  padding: 8px 12px; text-align: left;
+}
+.md-rendered th {
+  background: var(--bg-tertiary); font-weight: 600;
+}
+.md-rendered tr:hover td { background: var(--bg-hover); }
+
+.md-rendered img {
+  max-width: 100%; height: auto; border-radius: var(--radius-sm);
+  margin: 0.5em 0;
+}
+
+.md-rendered strong { font-weight: 700; }
+.md-rendered em { font-style: italic; }
+
+.md-rendered a { color: var(--accent-text); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.md-rendered a:hover { color: var(--accent-hover); }
+
+/* Compact markdown in comment bodies */
+.comment-body.md-rendered h1 { font-size: 1.2em; }
+.comment-body.md-rendered h2 { font-size: 1.1em; }
+.comment-body.md-rendered h3 { font-size: 1.05em; }
+.comment-body.md-rendered pre { padding: 10px 14px; }
 
 /* ── Footer ── */
 footer {

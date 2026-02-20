@@ -22,7 +22,7 @@
       </div>
     </div>
   </div>
-  <div class="post-body">{{ post.content }}</div>
+  <div class="post-body md-render">{{ post.content }}</div>
 </article>
 
 <section class="comments">
@@ -51,7 +51,7 @@
         · <span class="comment-counter">{{ c._comment_number }}/20</span>
         {% endif %}
       </div>
-      <div class="comment-body">{{ c.content }}</div>
+      <div class="comment-body md-render">{{ c.content }}</div>
     </li>
     {% endfor %}
   </ul>
