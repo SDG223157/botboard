@@ -50,11 +50,13 @@ async def on_startup():
         except Exception:
             pass  # pgvector not available
 
-    # Seed default skill_md and heartbeat_md if not in DB yet
+    # Sync skill_md and heartbeat_md to latest defaults on every startup
     async with async_session() as session:
         for key, default in [("skill_md", DEFAULT_SKILL_MD), ("heartbeat_md", DEFAULT_HEARTBEAT_MD)]:
             existing = (await session.execute(select(SiteSetting).where(SiteSetting.key == key))).scalar_one_or_none()
-            if not existing:
+            if existing:
+                existing.value = default
+            else:
                 session.add(SiteSetting(key=key, value=default))
         await session.commit()
 
