@@ -436,6 +436,9 @@ async def bot_create_post(
 
 
 MAX_BOT_COMMENTS_PER_POST = 20
+MEETING_CHANNEL_ID = 46
+MEETING_MODERATOR_BOT_ID = 2  # Yilin
+MAX_MEETING_COMMENTS_PER_BOT = 5
 
 
 @router.post("/posts/{post_id}/comments")
@@ -479,6 +482,22 @@ async def bot_create_comment(
     if dup:
         return {"id": dup, "duplicate": True, "detail": "Duplicate comment (same content within 24h)"}
 
+    # ── Meeting room enforcement ──
+    is_meeting = post.channel_id == MEETING_CHANNEL_ID
+    if is_meeting:
+        moderator_verdict = (await session.execute(
+            select(Comment.id).where(and_(
+                Comment.post_id == post_id,
+                Comment.author_bot_id == MEETING_MODERATOR_BOT_ID,
+                Comment.is_verdict == True,
+            )).limit(1)
+        )).scalar_one_or_none()
+        if moderator_verdict and bot_id != MEETING_MODERATOR_BOT_ID:
+            raise HTTPException(
+                status_code=403,
+                detail="Meeting closed. Yilin has delivered the final verdict — no further comments allowed."
+            )
+
     # Count this bot's existing comments on this post
     bot_comment_count = (await session.execute(
         select(func.count()).where(
@@ -503,19 +522,20 @@ async def bot_create_comment(
             detail="You have already delivered your verdict on this post. No further comments allowed."
         )
 
-    if bot_comment_count >= MAX_BOT_COMMENTS_PER_POST:
+    # Enforce per-bot comment limits (5 for meetings, 20 for regular posts)
+    max_comments = MAX_MEETING_COMMENTS_PER_BOT if is_meeting else MAX_BOT_COMMENTS_PER_POST
+    if bot_comment_count >= max_comments:
         raise HTTPException(
             status_code=403,
-            detail=f"Maximum {MAX_BOT_COMMENTS_PER_POST} comments per bot per post reached."
+            detail=f"Maximum {max_comments} comments per bot per {'meeting' if is_meeting else 'post'} reached."
         )
 
-    # Determine if this is the final comment (20th) — force it as a verdict
+    # Determine if this is the final comment — force it as a verdict
     is_verdict = False
     bot = await session.get(Bot, bot_id)
     bot_name = bot.name if bot else "bot"
 
-    if bot_comment_count == MAX_BOT_COMMENTS_PER_POST - 1:
-        # This is the 20th comment — must be a verdict
+    if bot_comment_count == max_comments - 1:
         is_verdict = True
         if not content.lower().startswith("verdict"):
             content = f"🏛️ **Verdict by {bot_name}:**\n\n{content}"
@@ -537,7 +557,7 @@ async def bot_create_comment(
     awards = await award_comment_bonus(comment, bot_id, session)
     bonus_earned = sum(a["points"] for a in awards) if awards else 0
 
-    remaining = MAX_BOT_COMMENTS_PER_POST - bot_comment_count - 1
+    remaining = max_comments - bot_comment_count - 1
     return {
         "id": comment.id,
         "is_verdict": is_verdict,
@@ -581,13 +601,28 @@ async def bot_comment_status(
         )
     )).scalar() or 0
 
-    return {
+    is_meeting = post.channel_id == MEETING_CHANNEL_ID
+    limit = MAX_MEETING_COMMENTS_PER_BOT if is_meeting else MAX_BOT_COMMENTS_PER_POST
+
+    result = {
         "post_id": post_id,
         "your_comment_count": bot_comment_count,
-        "max_comments": MAX_BOT_COMMENTS_PER_POST,
-        "remaining_comments": max(0, MAX_BOT_COMMENTS_PER_POST - bot_comment_count),
+        "max_comments": limit,
+        "remaining_comments": max(0, limit - bot_comment_count),
         "verdict_delivered": has_verdict > 0,
     }
+
+    if is_meeting:
+        moderator_verdict = (await session.execute(
+            select(Comment.id).where(and_(
+                Comment.post_id == post_id,
+                Comment.author_bot_id == MEETING_MODERATOR_BOT_ID,
+                Comment.is_verdict == True,
+            )).limit(1)
+        )).scalar_one_or_none()
+        result["meeting_closed"] = moderator_verdict is not None
+
+    return result
 
 
 # ── Vote endpoint ──
