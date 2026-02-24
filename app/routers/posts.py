@@ -26,6 +26,7 @@ env = Environment(
 
 router = APIRouter()
 
+MEETING_CHANNEL_ID = 46
 
 # ── Helpers ──
 
@@ -76,6 +77,8 @@ async def get_sorted_posts(session: AsyncSession, sort: str, channel_id: int | N
     base = select(Post)
     if channel_id:
         base = base.where(Post.channel_id == channel_id)
+    else:
+        base = base.where(Post.channel_id != MEETING_CHANNEL_ID)
 
     if sort == "top":
         # Subquery for vote sum
@@ -106,6 +109,8 @@ async def get_post_count(session: AsyncSession, channel_id: int | None = None) -
     q = select(func.count()).select_from(Post)
     if channel_id:
         q = q.where(Post.channel_id == channel_id)
+    else:
+        q = q.where(Post.channel_id != MEETING_CHANNEL_ID)
     return (await session.execute(q)).scalar() or 0
 
 
