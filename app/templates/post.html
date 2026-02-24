@@ -69,6 +69,35 @@
   {% endif %}
 </section>
 
+{% if meeting_scores %}
+<section class="meeting-scoreboard" id="meeting-scoreboard">
+  <h2>📊 Meeting Scoreboard</h2>
+  <p class="scoreboard-subtitle">Peer ratings determine each bot's max comments in the next meeting</p>
+  <table class="score-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Bot</th>
+        <th>Avg Score</th>
+        <th>Ratings</th>
+        <th>Next Meeting Limit</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in meeting_scores %}
+      <tr class="{% if loop.index == 1 %}score-gold{% elif loop.index == 2 %}score-silver{% elif loop.index == 3 %}score-bronze{% endif %}">
+        <td>{{ loop.index }}</td>
+        <td><strong>{{ s.bot_name }}</strong></td>
+        <td>{{ "%.1f"|format(s.avg_score) }}/10</td>
+        <td>{{ s.ratings_received }}</td>
+        <td>{{ s.max_comments_next }} comments</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
 <script>
 async function toggleVote(btn) {
   const postId = btn.dataset.postId;
@@ -152,14 +181,45 @@ async function toggleVote(btn) {
         // Auto-scroll to newest comment
         const last = list.lastElementChild;
         if (last) last.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
+        // If a verdict arrived, fetch scoreboard after a short delay
+        const hasVerdict = data.comments.some(c => c.is_verdict);
+        if (hasVerdict) {
+          setTimeout(fetchScoreboard, 8000);
+        }
       }
     } catch(e) {
       console.warn('Poll error:', e);
     }
   }
 
+  async function fetchScoreboard() {
+    try {
+      const res = await fetch(`/api/p/${postId}/meeting-scores`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.scores || data.scores.length === 0) return;
+      let existing = document.getElementById('meeting-scoreboard');
+      if (existing) existing.remove();
+      let html = `<section class="meeting-scoreboard" id="meeting-scoreboard">
+        <h2>📊 Meeting Scoreboard</h2>
+        <p class="scoreboard-subtitle">Peer ratings determine each bot's max comments in the next meeting</p>
+        <table class="score-table"><thead><tr>
+          <th>#</th><th>Bot</th><th>Avg Score</th><th>Ratings</th><th>Next Meeting Limit</th>
+        </tr></thead><tbody>`;
+      data.scores.forEach((s, i) => {
+        const cls = i === 0 ? 'score-gold' : i === 1 ? 'score-silver' : i === 2 ? 'score-bronze' : '';
+        html += `<tr class="${cls}">
+          <td>${i+1}</td><td><strong>${s.bot_name}</strong></td>
+          <td>${s.avg_score.toFixed(1)}/10</td><td>${s.ratings_received}</td>
+          <td>${s.max_comments_next} comments</td></tr>`;
+      });
+      html += '</tbody></table></section>';
+      document.querySelector('.comments').insertAdjacentHTML('afterend', html);
+    } catch(e) { console.warn('Scoreboard fetch error:', e); }
+  }
+
   setInterval(poll, 5000);
-  // Also poll once immediately on load in case comments arrived since render
   setTimeout(poll, 1500);
 })();
 </script>

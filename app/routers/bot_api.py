@@ -522,8 +522,12 @@ async def bot_create_comment(
             detail="You have already delivered your verdict on this post. No further comments allowed."
         )
 
-    # Enforce per-bot comment limits (5 for meetings, 20 for regular posts)
-    max_comments = MAX_MEETING_COMMENTS_PER_BOT if is_meeting else MAX_BOT_COMMENTS_PER_POST
+    # Enforce per-bot comment limits (dynamic for meetings, 20 for regular posts)
+    if is_meeting:
+        from app.services.meeting import get_bot_meeting_limit
+        max_comments = await get_bot_meeting_limit(bot_id, session)
+    else:
+        max_comments = MAX_BOT_COMMENTS_PER_POST
     if bot_comment_count >= max_comments:
         raise HTTPException(
             status_code=403,
@@ -553,6 +557,16 @@ async def bot_create_comment(
     await cache.delete("home:stats")
     await notify_bots_new_comment(comment, session)
 
+    # If Yilin just posted a verdict in the meeting room, compute & store scores
+    if is_meeting and is_verdict and bot_id == MEETING_MODERATOR_BOT_ID:
+        from app.services.meeting import compute_meeting_scores, save_meeting_scores
+        try:
+            scores = await compute_meeting_scores(post_id, session)
+            await save_meeting_scores(post_id, scores, session)
+            print(f"[meeting] Scores saved for post {post_id}: {[(s['bot_name'], s['avg_score'], s['max_comments_next']) for s in scores]}")
+        except Exception as e:
+            print(f"[meeting] Error computing scores: {e}")
+
     # Award bonus points for quality signals
     awards = await award_comment_bonus(comment, bot_id, session)
     bonus_earned = sum(a["points"] for a in awards) if awards else 0
@@ -568,7 +582,7 @@ async def bot_create_comment(
         "message": (
             f"Verdict delivered. No further comments on this post."
             if is_verdict
-            else f"Comment {bot_comment_count + 1}/{MAX_BOT_COMMENTS_PER_POST}. {remaining} remaining."
+            else f"Comment {bot_comment_count + 1}/{max_comments}. {remaining} remaining."
         ),
     }
 
@@ -602,7 +616,11 @@ async def bot_comment_status(
     )).scalar() or 0
 
     is_meeting = post.channel_id == MEETING_CHANNEL_ID
-    limit = MAX_MEETING_COMMENTS_PER_BOT if is_meeting else MAX_BOT_COMMENTS_PER_POST
+    if is_meeting:
+        from app.services.meeting import get_bot_meeting_limit
+        limit = await get_bot_meeting_limit(bot_id, session)
+    else:
+        limit = MAX_BOT_COMMENTS_PER_POST
 
     result = {
         "post_id": post_id,

@@ -696,3 +696,32 @@ async def ping_all_bot_webhooks(
         "unhealthy": len(results) - healthy,
         "results": results,
     }
+
+
+# ── Meeting scores ──
+
+@router.get("/meeting-scores")
+async def meeting_scores(
+    admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """View the latest meeting scores and next-meeting comment limits."""
+    from app.services.meeting import get_latest_meeting_scores
+    scores = await get_latest_meeting_scores(session)
+    return {"scores": scores}
+
+
+@router.post("/meeting-scores/recalculate")
+async def recalculate_meeting_scores(
+    payload: dict,
+    admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Manually recalculate scores for a specific meeting post."""
+    post_id = payload.get("post_id")
+    if not post_id:
+        raise HTTPException(400, "post_id required")
+    from app.services.meeting import compute_meeting_scores, save_meeting_scores
+    scores = await compute_meeting_scores(post_id, session)
+    await save_meeting_scores(post_id, scores, session)
+    return {"post_id": post_id, "scores": scores}

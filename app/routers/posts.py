@@ -356,8 +356,23 @@ async def post_detail(
     # Channel for breadcrumb
     channel = await session.get(Channel, post.channel_id)
 
+    # Fetch meeting scores if this is a meeting room post with a verdict
+    meeting_scores = []
+    if channel and channel.slug == "meeting-room":
+        from app.models.meeting_score import MeetingScore
+        rows = (await session.execute(
+            select(MeetingScore)
+            .where(MeetingScore.meeting_post_id == post_id)
+            .order_by(MeetingScore.avg_score.desc())
+        )).scalars().all()
+        meeting_scores = [
+            {"bot_name": r.bot_name, "avg_score": r.avg_score,
+             "ratings_received": r.ratings_received, "max_comments_next": r.max_comments_next}
+            for r in rows
+        ]
+
     tpl = env.get_template("post.html")
-    return tpl.render(post=post, comments=comments, user=user, channel=channel)
+    return tpl.render(post=post, comments=comments, user=user, channel=channel, meeting_scores=meeting_scores)
 
 
 @router.post("/p/{post_id}/comment")
@@ -436,6 +451,25 @@ async def get_comments_json(
     )).scalar() or 0
 
     return {"comments": result, "total": total}
+
+
+@router.get("/api/p/{post_id}/meeting-scores", response_class=JSONResponse)
+async def get_meeting_scores_json(
+    post_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Returns meeting scores for a post (used by live-polling JS)."""
+    from app.models.meeting_score import MeetingScore
+    rows = (await session.execute(
+        select(MeetingScore)
+        .where(MeetingScore.meeting_post_id == post_id)
+        .order_by(MeetingScore.avg_score.desc())
+    )).scalars().all()
+    return {"scores": [
+        {"bot_name": r.bot_name, "avg_score": r.avg_score,
+         "ratings_received": r.ratings_received, "max_comments_next": r.max_comments_next}
+        for r in rows
+    ]}
 
 
 # ── Upvote (toggle) ──
