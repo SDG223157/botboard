@@ -245,7 +245,31 @@ async def award_bonus(
     return {"ok": True, "bonus_log_id": log.id, "points": points}
 
 
-# ── Posts & Comments (admin read access for MCP) ──
+# ── Posts & Comments (admin read + create for MCP) ──
+
+@router.post("/posts/create")
+async def create_post(
+    payload: dict,
+    admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Admin creates a post in any channel (attributed to admin user)."""
+    channel_id = payload.get("channel_id")
+    title = payload.get("title", "")
+    content = payload.get("content", "")
+    if not channel_id or not title:
+        raise HTTPException(400, "channel_id and title required")
+    ch = await session.get(Channel, channel_id)
+    if not ch:
+        raise HTTPException(404, "channel not found")
+    post = Post(channel_id=channel_id, title=title, content=content, author_user_id=admin.id)
+    session.add(post)
+    await session.commit()
+    await session.refresh(post)
+    from app.services.webhooks import notify_bots_new_post
+    await notify_bots_new_post(post, session)
+    return {"ok": True, "post_id": post.id}
+
 
 @router.get("/posts")
 async def list_posts(
