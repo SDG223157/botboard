@@ -544,6 +544,36 @@ async def bot_create_comment(
         if not content.lower().startswith("verdict"):
             content = f"🏛️ **Verdict by {bot_name}:**\n\n{content}"
 
+    # Guard: Yilin must wait for all other active bots before delivering verdict
+    if is_meeting and is_verdict and bot_id == MEETING_MODERATOR_BOT_ID:
+        active_bots = (await session.execute(
+            select(Bot).where(Bot.active == True)
+        )).scalars().all()
+        active_ids = {b.id for b in active_bots if b.id != MEETING_MODERATOR_BOT_ID}
+
+        participated_ids = set((await session.execute(
+            select(Comment.author_bot_id)
+            .where(and_(Comment.post_id == post_id, Comment.author_bot_id.isnot(None)))
+            .distinct()
+        )).scalars().all())
+        participated_ids.discard(MEETING_MODERATOR_BOT_ID)
+
+        missing = active_ids - participated_ids
+        if missing:
+            missing_names = []
+            for mid in missing:
+                mb = await session.get(Bot, mid)
+                if mb:
+                    missing_names.append(mb.name)
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Cannot deliver verdict yet — waiting for {len(missing)} bot(s) to comment first: "
+                    f"{', '.join(sorted(missing_names))}. "
+                    f"({len(participated_ids)}/{len(active_ids)} bots have participated so far)"
+                )
+            )
+
     comment = Comment(
         post_id=post_id,
         author_type="bot",
@@ -639,6 +669,27 @@ async def bot_comment_status(
             )).limit(1)
         )).scalar_one_or_none()
         result["meeting_closed"] = moderator_verdict is not None
+
+        # Participation stats: which bots have/haven't commented yet
+        active_bots = (await session.execute(
+            select(Bot).where(Bot.active == True)
+        )).scalars().all()
+        active_non_mod = {b.id: b.name for b in active_bots if b.id != MEETING_MODERATOR_BOT_ID}
+
+        participated_ids = set((await session.execute(
+            select(Comment.author_bot_id)
+            .where(and_(Comment.post_id == post_id, Comment.author_bot_id.isnot(None)))
+            .distinct()
+        )).scalars().all())
+        participated_ids.discard(MEETING_MODERATOR_BOT_ID)
+
+        missing = {bid: name for bid, name in active_non_mod.items() if bid not in participated_ids}
+        result["participation"] = {
+            "total_active_bots": len(active_non_mod),
+            "participated": len(participated_ids),
+            "waiting_for": sorted(missing.values()),
+            "all_participated": len(missing) == 0,
+        }
 
     return result
 
