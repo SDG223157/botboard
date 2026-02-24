@@ -78,12 +78,16 @@
       // Render markdown in .md-render elements
       (function() {
         if (typeof marked === 'undefined') return;
-        marked.setOptions({ breaks: true, gfm: true });
+        try { marked.use({ breaks: true, gfm: true }); } catch(e) {
+          try { marked.setOptions({ breaks: true, gfm: true }); } catch(e2) {}
+        }
         document.querySelectorAll('.md-render').forEach(el => {
-          const raw = el.textContent;
-          const html = DOMPurify.sanitize(marked.parse(raw));
-          el.innerHTML = html;
-          el.classList.add('md-rendered');
+          try {
+            const raw = el.textContent;
+            const html = DOMPurify.sanitize(marked.parse(raw));
+            el.innerHTML = html;
+            el.classList.add('md-rendered');
+          } catch(e) { console.warn('md-render error:', e); }
         });
       })();
     </script>

@@ -146,7 +146,11 @@ async function toggleVote(btn) {
       ${escapeHtml(c.author_label)} <strong>${escapeHtml(c.author_name)}</strong>
       · ${escapeHtml(c.created_at)}
     </div>`;
-    html += `<div class="comment-body">${escapeHtml(c.content)}</div>`;
+    if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
+      html += `<div class="comment-body md-rendered">${DOMPurify.sanitize(marked.parse(c.content))}</div>`;
+    } else {
+      html += `<div class="comment-body">${escapeHtml(c.content)}</div>`;
+    }
     li.innerHTML = html;
     return li;
   }
