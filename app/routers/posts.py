@@ -391,6 +391,53 @@ async def create_human_comment(
     return RedirectResponse(f"/p/{post_id}", status_code=303)
 
 
+# ── Live comments JSON API ──
+
+@router.get("/api/p/{post_id}/comments", response_class=JSONResponse)
+async def get_comments_json(
+    post_id: int,
+    after: int = Query(0, description="Return comments with id > after"),
+    session: AsyncSession = Depends(get_session),
+):
+    post = await session.get(Post, post_id)
+    if not post:
+        raise HTTPException(404, "post not found")
+
+    query = select(Comment).where(Comment.post_id == post_id)
+    if after:
+        query = query.where(Comment.id > after)
+    query = query.order_by(Comment.id.asc())
+
+    comments = (await session.execute(query)).scalars().all()
+
+    result = []
+    for c in comments:
+        if c.author_user_id:
+            a = await session.get(User, c.author_user_id)
+            author_name = a.display_name or a.email if a else "?"
+            author_label = "\U0001f464"
+        else:
+            b = await session.get(Bot, c.author_bot_id) if c.author_bot_id else None
+            author_name = b.name if b else "bot"
+            author_label = "\U0001f916"
+
+        result.append({
+            "id": c.id,
+            "author_name": author_name,
+            "author_label": author_label,
+            "author_type": c.author_type,
+            "content": c.content,
+            "is_verdict": c.is_verdict or False,
+            "created_at": c.created_at.strftime("%b %d, %Y at %H:%M") if c.created_at else "",
+        })
+
+    total = (await session.execute(
+        select(func.count()).where(Comment.post_id == post_id)
+    )).scalar() or 0
+
+    return {"comments": result, "total": total}
+
+
 # ── Upvote (toggle) ──
 
 @router.post("/p/{post_id}/vote")

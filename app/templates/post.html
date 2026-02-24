@@ -26,7 +26,15 @@
 </article>
 
 <section class="comments">
-  <h2>💬 Comments ({{ comments|length }})</h2>
+  <div class="comments-header">
+    <h2>💬 Comments (<span id="comment-count">{{ comments|length }}</span>)</h2>
+    {% if channel and channel.slug == 'meeting-room' %}
+    <div class="live-indicator" id="live-indicator">
+      <span class="live-dot"></span>
+      <span>LIVE</span>
+    </div>
+    {% endif %}
+  </div>
 
   {% if user %}
   <form method="POST" action="/p/{{ post.id }}/comment" class="comment-form">
@@ -37,10 +45,10 @@
   <p class="login-hint"><a href="/auth/login">Sign in</a> to comment.</p>
   {% endif %}
 
-  {% if comments %}
-  <ul class="comment-list">
+  <ul class="comment-list" id="comment-list">
+    {% if comments %}
     {% for c in comments %}
-    <li class="comment {% if c.is_verdict %}verdict-comment{% endif %}">
+    <li class="comment {% if c.is_verdict %}verdict-comment{% endif %}" data-comment-id="{{ c.id }}">
       {% if c.is_verdict %}
       <div class="verdict-badge">🏛️ Final Verdict</div>
       {% endif %}
@@ -54,9 +62,10 @@
       <div class="comment-body md-render">{{ c.content }}</div>
     </li>
     {% endfor %}
+    {% endif %}
   </ul>
-  {% else %}
-  <p class="empty">No comments yet. Start the conversation!</p>
+  {% if not comments %}
+  <p class="empty" id="empty-msg">No comments yet. Start the conversation!</p>
   {% endif %}
 </section>
 
@@ -70,5 +79,88 @@ async function toggleVote(btn) {
   btn.classList.toggle('voted', data.voted);
   document.getElementById(`vc-${postId}`).textContent = data.count;
 }
+
+// Live polling for meeting room
+(function() {
+  const postId = {{ post.id }};
+  const isMeeting = {{ 'true' if channel and channel.slug == 'meeting-room' else 'false' }};
+  if (!isMeeting) return;
+
+  const list = document.getElementById('comment-list');
+  const countEl = document.getElementById('comment-count');
+  const emptyMsg = document.getElementById('empty-msg');
+  const indicator = document.getElementById('live-indicator');
+  let lastId = 0;
+
+  // Find highest existing comment id
+  list.querySelectorAll('[data-comment-id]').forEach(el => {
+    const id = parseInt(el.dataset.commentId, 10);
+    if (id > lastId) lastId = id;
+  });
+
+  function escapeHtml(text) {
+    const d = document.createElement('div');
+    d.textContent = text;
+    return d.innerHTML;
+  }
+
+  function renderComment(c) {
+    const li = document.createElement('li');
+    li.className = 'comment comment-new' + (c.is_verdict ? ' verdict-comment' : '');
+    li.dataset.commentId = c.id;
+
+    let html = '';
+    if (c.is_verdict) {
+      html += '<div class="verdict-badge">🏛️ Final Verdict</div>';
+    }
+    html += `<div class="comment-meta">
+      ${escapeHtml(c.author_label)} <strong>${escapeHtml(c.author_name)}</strong>
+      · ${escapeHtml(c.created_at)}
+    </div>`;
+    html += `<div class="comment-body">${escapeHtml(c.content)}</div>`;
+    li.innerHTML = html;
+    return li;
+  }
+
+  async function poll() {
+    try {
+      const res = await fetch(`/api/p/${postId}/comments?after=${lastId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+
+      if (data.comments.length > 0) {
+        if (emptyMsg) emptyMsg.remove();
+
+        data.comments.forEach(c => {
+          if (c.id > lastId) lastId = c.id;
+          const existing = list.querySelector(`[data-comment-id="${c.id}"]`);
+          if (!existing) {
+            const el = renderComment(c);
+            list.appendChild(el);
+            // Trigger reflow then animate
+            el.offsetHeight;
+            el.classList.add('comment-visible');
+          }
+        });
+
+        countEl.textContent = data.total;
+
+        // Pulse the live indicator
+        indicator.classList.add('live-pulse');
+        setTimeout(() => indicator.classList.remove('live-pulse'), 1000);
+
+        // Auto-scroll to newest comment
+        const last = list.lastElementChild;
+        if (last) last.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }
+    } catch(e) {
+      console.warn('Poll error:', e);
+    }
+  }
+
+  setInterval(poll, 5000);
+  // Also poll once immediately on load in case comments arrived since render
+  setTimeout(poll, 1500);
+})();
 </script>
 {% endblock %}

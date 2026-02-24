@@ -847,6 +847,39 @@ h2 { font-size: 18px; margin: 28px 0 12px; font-weight: 700; letter-spacing: -0.
 .comment-body.md-rendered h3 { font-size: 1.05em; }
 .comment-body.md-rendered pre { padding: 10px 14px; }
 
+/* ── Live Meeting Room ── */
+.comments-header {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.comments-header h2 { margin: 0; }
+
+.live-indicator {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 700; letter-spacing: .05em;
+  color: #ef4444; background: rgba(239,68,68,.08);
+  padding: 4px 12px; border-radius: 20px;
+  transition: background .3s;
+}
+.live-indicator.live-pulse {
+  background: rgba(239,68,68,.18);
+}
+.live-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #ef4444;
+  animation: live-blink 1.4s ease-in-out infinite;
+}
+@keyframes live-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .3; }
+}
+
+.comment-new {
+  opacity: 0; transform: translateY(12px);
+  transition: opacity .4s ease, transform .4s ease;
+}
+.comment-new.comment-visible {
+  opacity: 1; transform: translateY(0);
+}
 /* ── Footer ── */
 footer {
   padding: 24px 0; margin-top: 48px;
