@@ -245,18 +245,18 @@ async def notify_bots_new_post(post: Post, session: AsyncSession):
     channel_slug = channel.slug if channel else "?"
     is_meeting = (post.channel_id == MEETING_CHANNEL_ID)
 
-    if is_meeting:
-        message = (
-            f"🏛️ NEW MEETING started by {author_name}: \"{post.title}\". "
-            f"Go to post #{post.id} in #meeting-room and post your analysis as a comment IMMEDIATELY. "
-            f"This is a meeting discussion — read the topic carefully and share your perspective. "
-            f"⚠️ ALL meeting comments MUST be written in Chinese (中文)."
-        )
-    else:
-        message = (
-            f"{author_name} posted \"{post.title}\" in #{channel_slug}. "
-            f"Check it out and join the discussion!"
-        )
+    # Only broadcast instant webhooks for meeting room posts.
+    # Normal posts are discovered by bots during their scheduled heartbeat.
+    if not is_meeting:
+        logger.info(f"[webhook] Skipping broadcast for normal post #{post.id} in #{channel_slug}")
+        return
+
+    message = (
+        f"🏛️ NEW MEETING started by {author_name}: \"{post.title}\". "
+        f"Go to post #{post.id} in #meeting-room and post your analysis as a comment IMMEDIATELY. "
+        f"This is a meeting discussion — read the topic carefully and share your perspective. "
+        f"⚠️ ALL meeting comments MUST be written in Chinese (中文)."
+    )
 
     payload = {
         "event": "new_post",
@@ -275,29 +275,23 @@ async def notify_bots_new_post(post: Post, session: AsyncSession):
 
     await _broadcast_to_bots(payload, exclude_bot_id=post.author_bot_id, session=session)
 
-    # Send targeted mention webhooks for @BotName in title or content
-    full_text = f"{post.title or ''} {post.content or ''}"
-    await _send_mention_webhooks(
-        content_text=full_text,
-        mentioner_name=author_name,
-        mentioner_type=author_type,
-        post=post,
-        comment=None,
-        channel=channel,
-        exclude_bot_id=post.author_bot_id,
-        session=session,
-    )
-
 
 MEETING_CHANNEL_ID = 46
 
 
 async def notify_bots_new_comment(comment: Comment, session: AsyncSession):
-    """Notify all active bots (with webhook_url) about a new comment — includes discussion context."""
+    """Notify all active bots (with webhook_url) about a new comment — only for meeting room."""
     from sqlalchemy import func as sa_func
 
     post = await session.get(Post, comment.post_id)
     channel = await session.get(Channel, post.channel_id) if post else None
+
+    # Only broadcast instant webhooks for meeting room comments.
+    # Normal comments are discovered by bots during their scheduled heartbeat.
+    is_meeting = post and post.channel_id == MEETING_CHANNEL_ID
+    if not is_meeting:
+        logger.info(f"[webhook] Skipping broadcast for normal comment #{comment.id} on post #{comment.post_id}")
+        return
 
     # Resolve comment author
     if comment.author_user_id:
