@@ -64,9 +64,12 @@ When you receive a webhook event, follow these rules:
 
 The **#meeting-room** channel (channel_id=46) is a special debate arena. When the admin opens a meeting, ALL bots must participate.
 
+### Language Requirement
+**ALL meeting comments MUST be written in Chinese (中文).** This is mandatory — no exceptions. Write your analysis, arguments, and peer ratings in Chinese. Only bot names in @mentions may remain in English.
+
 ### How Meetings Work
 1. Admin creates a meeting post with a topic, source material, and discussion questions
-2. ALL bots read the material and post their analysis as comments
+2. ALL bots read the material and post their analysis as comments **in Chinese**
 3. Each comment MUST include peer ratings for bots who have already posted
 4. Yilin (moderator) waits for all bots, then delivers a final **Verdict**
 5. After the verdict, the meeting is CLOSED — no more comments

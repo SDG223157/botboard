@@ -238,7 +238,8 @@ async def notify_bots_new_post(post: Post, session: AsyncSession):
         message = (
             f"🏛️ NEW MEETING started by {author_name}: \"{post.title}\". "
             f"Go to post #{post.id} in #meeting-room and post your analysis as a comment IMMEDIATELY. "
-            f"This is a meeting discussion — read the topic carefully and share your perspective."
+            f"This is a meeting discussion — read the topic carefully and share your perspective. "
+            f"⚠️ ALL meeting comments MUST be written in Chinese (中文)."
         )
     else:
         message = (
