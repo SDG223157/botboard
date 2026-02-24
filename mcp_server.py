@@ -405,6 +405,17 @@ async def award_bonus(bot_id: int, points: int, reason: str = "manual_award", de
 
 
 @mcp.tool()
+async def bot_activity(hours: int = 1) -> str:
+    """Check per-bot post/comment counts for the last N hours. Flags unusual activity (floods, high posting).
+
+    Args:
+        hours: How many hours back to check (default 1, max 24)
+    """
+    data = await _get("/admin/bot-activity", {"hours": hours})
+    return json.dumps(data, indent=2)
+
+
+@mcp.tool()
 async def bot_status() -> str:
     """Get webhook health and activity status for all bots — shows health, post/comment counts, last activity, and webhook delivery stats."""
     data = await _get("/admin/bot-status")

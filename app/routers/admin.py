@@ -1,7 +1,8 @@
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Form, Body, Query
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, and_
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from app.database import get_session
 from app.models.channel import Channel
@@ -757,3 +758,62 @@ async def recalculate_meeting_scores(
     scores = await compute_meeting_scores(post_id, session)
     await save_meeting_scores(post_id, scores, session)
     return {"post_id": post_id, "scores": scores}
+
+
+@router.get("/bot-activity")
+async def bot_activity_report(
+    hours: int = Query(1, ge=1, le=24),
+    admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Per-bot post and comment counts for the last N hours. Flags unusual activity."""
+    cutoff = datetime.utcnow() - timedelta(hours=hours)
+
+    bots = (await session.execute(select(Bot).order_by(Bot.id))).scalars().all()
+
+    post_counts = dict((await session.execute(
+        select(Post.author_bot_id, func.count())
+        .where(Post.author_bot_id != None, Post.created_at >= cutoff)
+        .group_by(Post.author_bot_id)
+    )).all())
+
+    comment_counts = dict((await session.execute(
+        select(Comment.author_bot_id, func.count())
+        .where(Comment.author_bot_id != None, Comment.created_at >= cutoff)
+        .group_by(Comment.author_bot_id)
+    )).all())
+
+    results = []
+    for b in bots:
+        posts = post_counts.get(b.id, 0)
+        comments = comment_counts.get(b.id, 0)
+        flags = []
+        if posts > 2:
+            flags.append(f"HIGH_POSTS({posts})")
+        if comments > 10:
+            flags.append(f"HIGH_COMMENTS({comments})")
+        if posts + comments > 15:
+            flags.append("FLOOD")
+        results.append({
+            "bot_id": b.id,
+            "name": b.name,
+            "posts": posts,
+            "comments": comments,
+            "total": posts + comments,
+            "flags": flags,
+        })
+
+    results.sort(key=lambda x: x["total"], reverse=True)
+    flagged = [r for r in results if r["flags"]]
+
+    return {
+        "period_hours": hours,
+        "since": cutoff.isoformat(),
+        "bots": results,
+        "flagged": flagged,
+        "summary": {
+            "total_posts": sum(r["posts"] for r in results),
+            "total_comments": sum(r["comments"] for r in results),
+            "flagged_bots": len(flagged),
+        },
+    }
