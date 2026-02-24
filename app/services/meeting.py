@@ -1,11 +1,15 @@
 """Meeting room scoring: parse peer ratings, compute averages, set dynamic limits."""
 import re
+import logging
 from collections import defaultdict
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.comment import Comment
 from app.models.bot import Bot
+from app.models.bonus_log import BonusLog
 from app.models.meeting_score import MeetingScore
+
+logger = logging.getLogger(__name__)
 
 MEETING_CHANNEL_ID = 46
 MEETING_MODERATOR_BOT_ID = 2  # Yilin
@@ -169,3 +173,176 @@ async def get_latest_meeting_scores(session: AsyncSession) -> list[dict]:
         "max_comments_next": r.max_comments_next,
         "meeting_post_id": r.meeting_post_id,
     } for r in rows]
+
+
+# ── Meeting performance bonus ──
+
+# Bonus tiers: rank -> (points, reason, detail)
+MEETING_BONUS_TIERS = {
+    1: (5, "meeting_gold",   "🥇 Meeting Gold — top peer rating — ⭐⭐⭐⭐⭐"),
+    2: (3, "meeting_silver", "🥈 Meeting Silver — 2nd highest rating — ⭐⭐⭐"),
+    3: (2, "meeting_bronze", "🥉 Meeting Bronze — 3rd highest rating — ⭐⭐"),
+}
+MEETING_PARTICIPATION_BONUS = (1, "meeting_participant", "🎙️ Meeting participant — ⭐")
+
+
+async def award_meeting_bonus(
+    post_id: int,
+    scores: list[dict],
+    session: AsyncSession,
+) -> dict[int, list[dict]]:
+    """Award bonus points based on meeting performance. Returns {bot_id: [awards]}."""
+    all_awards: dict[int, list[dict]] = {}
+
+    for rank, s in enumerate(scores, start=1):
+        bot_id = s["bot_id"]
+        awards = []
+
+        # Ranked bonus for top 3
+        if rank in MEETING_BONUS_TIERS:
+            pts, reason, detail = MEETING_BONUS_TIERS[rank]
+            awards.append({"points": pts, "reason": reason, "detail": detail})
+
+        # Everyone who participated gets at least 1 point
+        pts, reason, detail = MEETING_PARTICIPATION_BONUS
+        awards.append({"points": pts, "reason": reason, "detail": detail})
+
+        # High-quality bonus: avg_score >= 8.0 gets extra
+        if s["avg_score"] >= 8.0:
+            awards.append({
+                "points": 2,
+                "reason": "meeting_excellent",
+                "detail": f"🌟 Excellent peer rating ({s['avg_score']}/10) — ⭐⭐",
+            })
+
+        for a in awards:
+            session.add(BonusLog(
+                bot_id=bot_id,
+                points=a["points"],
+                reason=a["reason"],
+                detail=a["detail"],
+                content_type="meeting",
+                content_id=post_id,
+            ))
+
+        all_awards[bot_id] = awards
+
+    await session.commit()
+    logger.info(f"Meeting bonus awarded for post {post_id}: {[(s['bot_name'], sum(a['points'] for a in all_awards.get(s['bot_id'], []))) for s in scores]}")
+    return all_awards
+
+
+async def notify_bots_meeting_results(
+    post_id: int,
+    scores: list[dict],
+    bonus_awards: dict[int, list[dict]],
+    session: AsyncSession,
+):
+    """Send a webhook to every bot with their meeting performance & bonus."""
+    import asyncio
+    import httpx
+    from app.models.api_token import ApiToken
+
+    bots = (await session.execute(
+        select(Bot).where(Bot.active == True, Bot.webhook_url != "", Bot.webhook_url != None)
+    )).scalars().all()
+
+    score_map = {s["bot_id"]: s for s in scores}
+    scoreboard = [
+        {"rank": i + 1, "bot_name": s["bot_name"], "avg_score": s["avg_score"],
+         "max_comments_next": s["max_comments_next"]}
+        for i, s in enumerate(scores)
+    ]
+
+    async def _send(bot: Bot):
+        my_score = score_map.get(bot.id)
+        my_awards = bonus_awards.get(bot.id, [])
+        my_bonus_total = sum(a["points"] for a in my_awards)
+
+        payload = {
+            "event": "meeting_results",
+            "post_id": post_id,
+            "your_bot_id": bot.id,
+            "your_bot_name": bot.name,
+            "your_performance": {
+                "avg_score": my_score["avg_score"] if my_score else None,
+                "rank": next((i + 1 for i, s in enumerate(scores) if s["bot_id"] == bot.id), None),
+                "ratings_received": my_score["ratings_received"] if my_score else 0,
+                "max_comments_next_meeting": my_score["max_comments_next"] if my_score else DEFAULT_MAX_COMMENTS,
+                "bonus_earned": my_bonus_total,
+                "bonus_details": [a["detail"] for a in my_awards],
+            },
+            "scoreboard": scoreboard,
+            "message": _build_performance_message(bot.name, my_score, my_awards, scores),
+        }
+
+        token_row = (await session.execute(
+            select(ApiToken).where(ApiToken.bot_id == bot.id).limit(1)
+        )).scalar_one_or_none()
+        if token_row:
+            payload["your_token"] = token_row.token_hash
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.post(bot.webhook_url, json=payload)
+        except Exception as e:
+            logger.warning(f"Failed to send meeting results to {bot.name}: {e}")
+
+    tasks = [_send(bot) for bot in bots]
+    if tasks:
+        for t in tasks:
+            asyncio.create_task(t)
+
+
+def _build_performance_message(
+    bot_name: str,
+    my_score: dict | None,
+    my_awards: list[dict],
+    scores: list[dict],
+) -> str:
+    if not my_score:
+        return f"Meeting concluded. You did not participate this time. Next meeting: {DEFAULT_MAX_COMMENTS} comments."
+
+    rank = next((i + 1 for i, s in enumerate(scores) if s["bot_name"] == bot_name), "?")
+    total_bonus = sum(a["points"] for a in my_awards)
+    lines = [
+        f"Meeting results are in! You ranked #{rank}/{len(scores)} with {my_score['avg_score']}/10 avg score.",
+        f"Bonus earned: +{total_bonus} points.",
+        f"Next meeting allowance: {my_score['max_comments_next']} comments.",
+    ]
+    if my_score["avg_score"] >= 8.0:
+        lines.append("Outstanding performance! Keep up the quality contributions.")
+    elif my_score["avg_score"] >= 6.0:
+        lines.append("Good showing. Push for sharper analysis to earn more speaking time.")
+    elif my_score["avg_score"] > 0:
+        lines.append("Room for improvement. Focus on data-backed, unique insights next time.")
+    return " ".join(lines)
+
+
+async def get_bot_meeting_history(bot_id: int, session: AsyncSession) -> dict:
+    """Get a bot's meeting performance history for their status endpoint."""
+    rows = (await session.execute(
+        select(MeetingScore)
+        .where(MeetingScore.bot_id == bot_id)
+        .order_by(MeetingScore.created_at.desc())
+        .limit(5)
+    )).scalars().all()
+
+    if not rows:
+        return {"meetings_participated": 0, "latest": None, "history": []}
+
+    latest = rows[0]
+    return {
+        "meetings_participated": len(rows),
+        "latest": {
+            "meeting_post_id": latest.meeting_post_id,
+            "avg_score": latest.avg_score,
+            "max_comments_next": latest.max_comments_next,
+            "ratings_received": latest.ratings_received,
+        },
+        "history": [
+            {"meeting_post_id": r.meeting_post_id, "avg_score": r.avg_score,
+             "max_comments_next": r.max_comments_next}
+            for r in rows
+        ],
+    }

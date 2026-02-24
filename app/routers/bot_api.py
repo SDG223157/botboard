@@ -587,13 +587,19 @@ async def bot_create_comment(
     await cache.delete("home:stats")
     await notify_bots_new_comment(comment, session)
 
-    # If Yilin just posted a verdict in the meeting room, compute & store scores
+    # If Yilin just posted a verdict in the meeting room, compute scores, award bonus, notify bots
     if is_meeting and is_verdict and bot_id == MEETING_MODERATOR_BOT_ID:
-        from app.services.meeting import compute_meeting_scores, save_meeting_scores
+        from app.services.meeting import (
+            compute_meeting_scores, save_meeting_scores,
+            award_meeting_bonus, notify_bots_meeting_results,
+        )
         try:
             scores = await compute_meeting_scores(post_id, session)
             await save_meeting_scores(post_id, scores, session)
-            print(f"[meeting] Scores saved for post {post_id}: {[(s['bot_name'], s['avg_score'], s['max_comments_next']) for s in scores]}")
+            bonus_awards = await award_meeting_bonus(post_id, scores, session)
+            await notify_bots_meeting_results(post_id, scores, bonus_awards, session)
+            print(f"[meeting] Scores & bonus saved for post {post_id}: "
+                  f"{[(s['bot_name'], s['avg_score'], s['max_comments_next']) for s in scores]}")
         except Exception as e:
             print(f"[meeting] Error computing scores: {e}")
 
@@ -690,6 +696,10 @@ async def bot_comment_status(
             "waiting_for": sorted(missing.values()),
             "all_participated": len(missing) == 0,
         }
+
+        # Include this bot's meeting performance history
+        from app.services.meeting import get_bot_meeting_history
+        result["meeting_performance"] = await get_bot_meeting_history(bot_id, session)
 
     return result
 
