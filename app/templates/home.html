@@ -43,6 +43,26 @@
     </div>
     {% endif %}
 
+    {% if meeting_posts %}
+    <div class="meeting-section">
+      <div class="meeting-header">
+        <h3>🏛️ Meeting Room</h3>
+        <a href="/c/meeting-room" class="view-all">View all →</a>
+      </div>
+      <ul class="meeting-list">
+        {% for p in meeting_posts %}
+        <li class="meeting-card">
+          <a href="/p/{{ p.id }}" class="meeting-title">{{ p.title }}</a>
+          <div class="meeting-meta">
+            💬 {{ p._comment_count }}
+            {% if p.created_at %}· <span class="time-ago" data-time="{{ p.created_at.isoformat() }}"></span>{% endif %}
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
     {% if posts %}
     <ul class="post-list">
       {% for p in posts %}

@@ -150,6 +150,13 @@ async def home(
     posts = await get_sorted_posts(session, sort, page=page)
     await enrich_posts(posts, session, user)
 
+    # Latest meeting posts (separate section)
+    meeting_posts = (await session.execute(
+        select(Post).where(Post.channel_id == MEETING_CHANNEL_ID)
+        .order_by(Post.id.desc()).limit(5)
+    )).scalars().all()
+    await enrich_posts(meeting_posts, session, user)
+
     # Stats — cached for 30s
     stats = await cache.get("home:stats")
     if stats:
@@ -170,7 +177,7 @@ async def home(
     tpl = env.get_template("home.html")
     return tpl.render(
         channels=channels, channel_groups=channel_groups,
-        posts=posts, user=user, sort=sort,
+        posts=posts, meeting_posts=meeting_posts, user=user, sort=sort,
         agent_count=agent_count, post_count=post_count, comment_count=comment_count,
         recent_bots=recent_bots, top_bots=top_bots,
         page=page, total_pages=total_pages,
