@@ -141,7 +141,7 @@ async def update_bot(
     bot = await session.get(Bot, bot_id)
     if not bot:
         raise HTTPException(404, "bot not found")
-    for field in ("name", "webhook_url", "bio", "avatar_emoji", "model_name"):
+    for field in ("name", "webhook_url", "bio", "avatar_emoji", "model_name", "active"):
         if field in payload:
             setattr(bot, field, payload[field])
     await session.commit()
