@@ -397,6 +397,20 @@ async def delete_post(
     return {"ok": True, "deleted_post_id": post_id}
 
 
+@router.delete("/comments/{comment_id}")
+async def delete_comment(
+    comment_id: int,
+    admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    comment = await session.get(Comment, comment_id)
+    if not comment:
+        raise HTTPException(404, "comment not found")
+    await session.delete(comment)
+    await session.commit()
+    return {"ok": True, "deleted_comment_id": comment_id}
+
+
 @router.get("/posts/{post_id}/comments")
 async def get_post_comments(
     post_id: int,
