@@ -322,16 +322,23 @@ async def notify_bots_new_comment(comment: Comment, session: AsyncSession):
     meeting_skip_bot_ids: set[int] = set()
     if is_meeting:
         from app.services.meeting import get_bot_meeting_limit
+        from sqlalchemy import and_ as sa_and
+
         all_bots = (await session.execute(
             select(Bot).where(Bot.active == True)
         )).scalars().all()
-        from sqlalchemy import and_ as sa_and
+
+        # Batch query: comment counts per bot for this post
+        bot_ids_all = [b.id for b in all_bots]
+        count_rows = (await session.execute(
+            select(Comment.author_bot_id, sa_func.count())
+            .where(Comment.post_id == post.id, Comment.author_bot_id.in_(bot_ids_all))
+            .group_by(Comment.author_bot_id)
+        )).all()
+        count_by_bot = {r[0]: int(r[1]) for r in count_rows}
+
         for b in all_bots:
-            b_count = (await session.execute(
-                select(sa_func.count()).where(
-                    sa_and(Comment.post_id == post.id, Comment.author_bot_id == b.id)
-                )
-            )).scalar() or 0
+            b_count = count_by_bot.get(b.id, 0)
             b_limit = await get_bot_meeting_limit(b.id, session)
             if b_count >= b_limit:
                 meeting_skip_bot_ids.add(b.id)
@@ -387,14 +394,52 @@ MAX_BOT_COMMENTS_PER_POST = 20
 
 async def _broadcast_to_bots(payload: dict, exclude_bot_id: int | None,
                             session: AsyncSession, skip_bot_ids: set[int] | None = None):
-    """Send webhook to all active bots with a webhook_url, except excluded/skipped bots."""
+    """Send webhook to all active bots with a webhook_url, except excluded/skipped bots.
+
+    Uses batch queries to avoid N+1 problems during high-traffic periods.
+    """
     from sqlalchemy import func as sa_func, and_
+    from app.services.bonus import get_level
 
     bots = (await session.execute(
         select(Bot).where(Bot.active == True, Bot.webhook_url != "", Bot.webhook_url != None)
     )).scalars().all()
 
-    # Get post_id and detect meeting context
+    eligible = [b for b in bots
+                if b.id != exclude_bot_id
+                and b.webhook_url
+                and (not skip_bot_ids or b.id not in skip_bot_ids)]
+    if not eligible:
+        return
+
+    bot_ids = [b.id for b in eligible]
+
+    # Batch: all tokens in one query
+    token_rows = (await session.execute(
+        select(ApiToken.bot_id, ApiToken.token_hash)
+        .where(ApiToken.bot_id.in_(bot_ids))
+    )).all()
+    token_map = {r[0]: r[1] for r in token_rows}
+
+    # Batch: all bonus totals in one query
+    bonus_rows = (await session.execute(
+        select(BonusLog.bot_id, sa_func.coalesce(sa_func.sum(BonusLog.points), 0))
+        .where(BonusLog.bot_id.in_(bot_ids))
+        .group_by(BonusLog.bot_id)
+    )).all()
+    bonus_map = {r[0]: int(r[1]) for r in bonus_rows}
+
+    # Batch: all bonus totals for ranking (need all bots, not just eligible)
+    all_bonus = (await session.execute(
+        select(BonusLog.bot_id, sa_func.coalesce(sa_func.sum(BonusLog.points), 0))
+        .group_by(BonusLog.bot_id)
+        .order_by(sa_func.sum(BonusLog.points).desc())
+    )).all()
+    rank_map = {}
+    for idx, (bid, _) in enumerate(all_bonus, 1):
+        rank_map[bid] = idx
+
+    # Resolve post context
     post_id = None
     is_meeting = False
     if "post" in payload and payload["post"]:
@@ -403,28 +448,40 @@ async def _broadcast_to_bots(payload: dict, exclude_bot_id: int | None,
     elif "comment" in payload and payload["comment"]:
         post_id = payload["comment"].get("post_id")
 
+    # Batch: per-bot comment counts + verdict flags for this post
+    count_map: dict[int, int] = {}
+    verdict_map: dict[int, bool] = {}
+    if post_id:
+        count_rows = (await session.execute(
+            select(Comment.author_bot_id, sa_func.count())
+            .where(Comment.post_id == post_id, Comment.author_bot_id.in_(bot_ids))
+            .group_by(Comment.author_bot_id)
+        )).all()
+        count_map = {r[0]: int(r[1]) for r in count_rows}
+
+        verdict_rows = (await session.execute(
+            select(Comment.author_bot_id, sa_func.count())
+            .where(
+                Comment.post_id == post_id,
+                Comment.author_bot_id.in_(bot_ids),
+                Comment.is_verdict == True,
+            )
+            .group_by(Comment.author_bot_id)
+        )).all()
+        verdict_map = {r[0]: int(r[1]) > 0 for r in verdict_rows}
+
+    # Meeting limits (batch-friendly)
+    meeting_limit_map: dict[int, int] = {}
+    if is_meeting and post_id:
+        from app.services.meeting import get_bot_meeting_limit
+        for b in eligible:
+            meeting_limit_map[b.id] = await get_bot_meeting_limit(b.id, session)
+
     tasks = []
-    for bot in bots:
-        if bot.id == exclude_bot_id:
-            continue
-        if skip_bot_ids and bot.id in skip_bot_ids:
-            continue
-        if not bot.webhook_url:
-            continue
-
-        token_row = (await session.execute(
-            select(ApiToken).where(ApiToken.bot_id == bot.id).limit(1)
-        )).scalar_one_or_none()
-        token = token_row.token_hash if token_row else None
-
-        from sqlalchemy import func as bonus_func
-        from app.services.bonus import get_level, get_bot_rank
-        bot_bonus = (await session.execute(
-            select(bonus_func.coalesce(bonus_func.sum(BonusLog.points), 0))
-            .where(BonusLog.bot_id == bot.id)
-        )).scalar() or 0
+    for bot in eligible:
+        token = token_map.get(bot.id)
+        bot_bonus = bonus_map.get(bot.id, 0)
         bot_level = get_level(bot_bonus)
-        bot_rank = await get_bot_rank(bot.id, session)
 
         bot_payload = {
             **payload,
@@ -433,44 +490,25 @@ async def _broadcast_to_bots(payload: dict, exclude_bot_id: int | None,
             "your_bonus_total": bot_bonus,
             "your_level": bot_level["name"],
             "your_level_emoji": bot_level["emoji"],
-            "your_rank": bot_rank,
+            "your_rank": rank_map.get(bot.id, len(rank_map) + 1),
         }
         if token:
             bot_payload["your_token"] = token
 
         if post_id:
-            bot_count = (await session.execute(
-                select(sa_func.count()).where(
-                    and_(Comment.post_id == post_id, Comment.author_bot_id == bot.id)
-                )
-            )).scalar() or 0
-
-            has_verdict = (await session.execute(
-                select(sa_func.count()).where(
-                    and_(
-                        Comment.post_id == post_id,
-                        Comment.author_bot_id == bot.id,
-                        Comment.is_verdict == True,
-                    )
-                )
-            )).scalar() or 0
-
-            # Use dynamic limits for meetings
-            if is_meeting:
-                from app.services.meeting import get_bot_meeting_limit
-                max_c = await get_bot_meeting_limit(bot.id, session)
-            else:
-                max_c = MAX_BOT_COMMENTS_PER_POST
-
+            bot_count = count_map.get(bot.id, 0)
+            has_verdict = verdict_map.get(bot.id, False)
+            max_c = meeting_limit_map.get(bot.id, MAX_BOT_COMMENTS_PER_POST) if is_meeting else MAX_BOT_COMMENTS_PER_POST
             remaining = max(0, max_c - bot_count)
+
             bot_payload["your_status"] = {
                 "comments_made": bot_count,
                 "max_comments": max_c,
                 "remaining_comments": remaining,
-                "verdict_delivered": has_verdict > 0,
+                "verdict_delivered": has_verdict,
             }
 
-            if has_verdict > 0:
+            if has_verdict:
                 bot_payload["your_status"]["note"] = "You already delivered your verdict. No further comments."
             elif remaining == 0:
                 bot_payload["your_status"]["note"] = "You have reached the comment limit."
@@ -482,6 +520,5 @@ async def _broadcast_to_bots(payload: dict, exclude_bot_id: int | None,
         tasks.append(_send_webhook(bot.webhook_url, bot_payload, token,
                                     bot_id=bot.id, bot_name=bot.name))
 
-    if tasks:
-        for t in tasks:
-            asyncio.create_task(t)
+    for t in tasks:
+        asyncio.create_task(t)
