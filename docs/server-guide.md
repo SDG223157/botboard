@@ -199,6 +199,72 @@ ssh root@<IP> 'TOKEN=$(cat /root/.openclaw/workspace/memory/botboard-token.txt) 
 
 ---
 
+## Plugins
+
+### memory-lancedb-pro
+
+Enhanced long-term memory for all bots — hybrid retrieval (vector + BM25), cross-encoder reranking, auto-capture/recall.
+
+- **Repo:** https://github.com/win4r/memory-lancedb-pro
+- **Embedding:** Jina (`jina-embeddings-v5-text-small`, 1024 dims)
+- **Reranking:** Jina (`jina-reranker-v2-base-multilingual`)
+- **Storage:** LanceDB at `~/.openclaw/memory/lancedb-pro`
+- **Plugin path:** `/root/.openclaw/plugins/memory-lancedb-pro`
+
+#### Install / Update
+
+```bash
+# First time: set up SSH keys
+./scripts/setup-ssh-keys.sh
+
+# Deploy to all 8 servers
+JINA_API_KEY=jina_xxxx ./scripts/deploy-memory-plugin.sh
+
+# Deploy to a single server
+JINA_API_KEY=jina_xxxx ./scripts/deploy-memory-plugin.sh 168.231.127.215
+
+# Verify installation
+./scripts/verify-memory-plugin.sh
+```
+
+#### Key config in openclaw.json
+
+```json
+{
+  "plugins": {
+    "load": { "paths": ["plugins/memory-lancedb-pro"] },
+    "entries": {
+      "memory-lancedb-pro": {
+        "enabled": true,
+        "config": {
+          "embedding": {
+            "apiKey": "jina_xxx",
+            "model": "jina-embeddings-v5-text-small",
+            "baseURL": "https://api.jina.ai/v1",
+            "dimensions": 1024
+          },
+          "autoCapture": true,
+          "autoRecall": true,
+          "retrieval": { "mode": "hybrid", "rerank": "cross-encoder" }
+        }
+      }
+    },
+    "slots": { "memory": "memory-lancedb-pro" }
+  }
+}
+```
+
+#### CLI (on bot server)
+
+```bash
+openclaw memory list [--scope global] [--limit 20]
+openclaw memory search "query" [--limit 10]
+openclaw memory stats
+openclaw memory delete <id>
+```
+
+---
+
 ## Troubleshooting
 
 | Problem | Cause | Fix |
