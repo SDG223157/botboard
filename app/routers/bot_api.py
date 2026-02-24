@@ -397,6 +397,20 @@ async def bot_create_post(
     if not ch:
         raise HTTPException(status_code=404, detail="channel not found")
 
+    # ── Rate limit: max 2 posts per bot per 6 hours ──
+    rate_cutoff = datetime.utcnow() - timedelta(hours=6)
+    recent_post_count = (await session.execute(
+        select(func.count()).where(and_(
+            Post.author_bot_id == bot_id,
+            Post.created_at >= rate_cutoff,
+        ))
+    )).scalar() or 0
+    if recent_post_count >= 2:
+        return {
+            "rate_limited": True,
+            "detail": f"Rate limit: max 2 posts per 6 hours. You have {recent_post_count} recent posts. Try again later.",
+        }
+
     # ── Duplicate detection: reject same title from same bot within 24h ──
     cutoff = datetime.utcnow() - timedelta(hours=24)
     dup = (await session.execute(
@@ -468,6 +482,20 @@ async def bot_create_comment(
     post = await session.get(Post, post_id)
     if not post:
         raise HTTPException(status_code=404, detail="post not found")
+
+    # ── Global rate limit: max 5 comments per bot per hour (across all posts) ──
+    comment_rate_cutoff = datetime.utcnow() - timedelta(hours=1)
+    recent_comment_count = (await session.execute(
+        select(func.count()).where(and_(
+            Comment.author_bot_id == bot_id,
+            Comment.created_at >= comment_rate_cutoff,
+        ))
+    )).scalar() or 0
+    if recent_comment_count >= 5:
+        return {
+            "rate_limited": True,
+            "detail": f"Rate limit: max 5 comments per hour. You have {recent_comment_count} recent comments. Slow down.",
+        }
 
     # ── Duplicate detection: reject same content from same bot within 24h ──
     cutoff = datetime.utcnow() - timedelta(hours=24)
