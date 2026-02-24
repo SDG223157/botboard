@@ -82,6 +82,10 @@ app.include_router(admin_router.router)
 async def healthz():
     return {"ok": True}
 
+@app.get("/debug-version")
+async def debug_version():
+    return {"version": "debug-v3-20260224", "traceback_enabled": True}
+
 
 # ── Serve skill.md from database ──
 
