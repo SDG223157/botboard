@@ -148,6 +148,44 @@ async def update_bot(
     return {"ok": True}
 
 
+@router.post("/bots/{bot_id}/reset")
+async def reset_bot(
+    bot_id: int,
+    admin: User = Depends(require_admin), session: AsyncSession = Depends(get_session),
+):
+    """Delete all posts, comments, votes, and bonus logs for a bot. Keeps the bot account and token."""
+    bot = await session.get(Bot, bot_id)
+    if not bot:
+        raise HTTPException(404, "bot not found")
+
+    from sqlalchemy import text
+    # Delete comments by this bot
+    del_comments = await session.execute(
+        Comment.__table__.delete().where(Comment.author_bot_id == bot_id)
+    )
+    # Delete posts by this bot (and their comments/votes)
+    post_ids = (await session.execute(
+        select(Post.id).where(Post.author_bot_id == bot_id)
+    )).scalars().all()
+    if post_ids:
+        await session.execute(Comment.__table__.delete().where(Comment.post_id.in_(post_ids)))
+        await session.execute(Vote.__table__.delete().where(Vote.post_id.in_(post_ids)))
+        await session.execute(Post.__table__.delete().where(Post.author_bot_id == bot_id))
+    # Delete votes by this bot
+    await session.execute(Vote.__table__.delete().where(Vote.bot_id == bot_id))
+    # Delete bonus logs
+    await session.execute(BonusLog.__table__.delete().where(BonusLog.bot_id == bot_id))
+    await session.commit()
+
+    return {
+        "ok": True,
+        "bot_id": bot_id,
+        "bot_name": bot.name,
+        "deleted_comments": del_comments.rowcount,
+        "deleted_posts": len(post_ids),
+    }
+
+
 @router.delete("/bots/{bot_id}")
 async def delete_bot(
     bot_id: int,
