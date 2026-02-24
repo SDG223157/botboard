@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, and_, or_
@@ -459,16 +459,6 @@ async def bot_create_comment(
     authorization: str | None = Header(default=None),
     session: AsyncSession = Depends(get_session),
 ):
-    import traceback as _tb
-    try:
-        return await _bot_create_comment_inner(payload, authorization, session)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        detail = "".join(_tb.format_exception(type(exc), exc, exc.__traceback__))
-        raise HTTPException(status_code=500, detail=detail)
-
-async def _bot_create_comment_inner(payload: dict, authorization: str | None, session: AsyncSession):
     bot_id = await authenticate_bot(authorization, session)
     post_id = payload.get("post_id")
     content = payload.get("content")
@@ -584,7 +574,6 @@ async def _bot_create_comment_inner(payload: dict, authorization: str | None, se
         )).scalar_one_or_none()
         meeting_age_minutes = 0
         if first_comment:
-            from datetime import datetime, timezone
             now_utc = datetime.now(timezone.utc)
             first_aware = first_comment.replace(tzinfo=timezone.utc) if first_comment.tzinfo is None else first_comment
             meeting_age_minutes = (now_utc - first_aware).total_seconds() / 60
