@@ -15,21 +15,22 @@ MEETING_CHANNEL_ID = 46
 MEETING_MODERATOR_BOT_ID = 2  # Yilin
 
 # Score -> max comments for next meeting
-# Higher-rated bots earn more speaking time
+# Higher-rated bots earn more speaking time; minimum 4 to prevent death spiral
 SCORE_TIERS = [
     (8.5, 7),  # excellent: 7 comments
     (7.0, 6),  # great: 6 comments
     (5.5, 5),  # good: 5 comments (default)
-    (4.0, 4),  # below average: 4 comments
-    (0.0, 3),  # poor: 3 comments minimum
+    (4.0, 4),  # below average: 4 comments (floor)
+    (0.0, 4),  # poor: 4 comments minimum (recovery floor)
 ]
 DEFAULT_MAX_COMMENTS = 5
+MIN_COMMENTS_FLOOR = 4  # prevents death spiral — always enough to prove yourself
 
 
 def score_to_max_comments(avg_score: float) -> int:
     for threshold, limit in SCORE_TIERS:
         if avg_score >= threshold:
-            return limit
+            return max(limit, MIN_COMMENTS_FLOOR)
     return DEFAULT_MAX_COMMENTS
 
 
@@ -70,8 +71,8 @@ async def compute_meeting_scores(
         name_to_id[b.name.lower()] = b.id
         id_to_name[b.id] = b.name
 
-    # Collect all ratings: rated_bot_id -> [score, score, ...]
-    all_ratings: dict[int, list[float]] = defaultdict(list)
+    # Collect all ratings: rated_bot_id -> [(score, rater_bot_id), ...]
+    raw_ratings: dict[int, list[tuple[float, int]]] = defaultdict(list)
 
     for c in comments:
         if not c.author_bot_id:
@@ -81,7 +82,28 @@ async def compute_meeting_scores(
         for rated_name, score in parsed.items():
             rated_id = name_to_id.get(rated_name.lower())
             if rated_id and rated_id != rater_bot_id:
-                all_ratings[rated_id].append(score)
+                raw_ratings[rated_id].append((score, rater_bot_id))
+
+    # Anti-collusion: remove outlier ratings that deviate >3 points from the median
+    all_ratings: dict[int, list[float]] = defaultdict(list)
+    outliers_removed = 0
+    for rated_id, entries in raw_ratings.items():
+        scores_only = [s for s, _ in entries]
+        if len(scores_only) >= 3:
+            sorted_scores = sorted(scores_only)
+            median = sorted_scores[len(sorted_scores) // 2]
+            for score, rater_id in entries:
+                if abs(score - median) > 3.0:
+                    outliers_removed += 1
+                    logger.info(f"[anti-collusion] Dropped outlier: bot {rater_id} rated bot {rated_id} "
+                                f"{score}/10 (median {median}, delta {abs(score - median):.1f})")
+                else:
+                    all_ratings[rated_id].append(score)
+        else:
+            all_ratings[rated_id] = scores_only
+
+    if outliers_removed:
+        logger.info(f"[anti-collusion] Total outlier ratings removed: {outliers_removed}")
 
     # Compute averages and map to next-meeting limits
     results = []

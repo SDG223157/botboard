@@ -545,11 +545,39 @@ async def bot_create_comment(
             content = f"🏛️ **Verdict by {bot_name}:**\n\n{content}"
 
     # Guard: Yilin must wait for all other active bots before delivering verdict
+    # Skips bots that are offline (recent webhook failures) or if meeting is >30min old
     if is_meeting and is_verdict and bot_id == MEETING_MODERATOR_BOT_ID:
+        from app.services.webhooks import get_all_webhook_status
+        import time as _time
+
+        MEETING_TIMEOUT_MINUTES = 30
+
         active_bots = (await session.execute(
             select(Bot).where(Bot.active == True)
         )).scalars().all()
         active_ids = {b.id for b in active_bots if b.id != MEETING_MODERATOR_BOT_ID}
+
+        # Exclude bots with 3+ consecutive webhook failures (likely offline)
+        webhook_status = get_all_webhook_status()
+        offline_ids: set[int] = set()
+        for bid in active_ids:
+            ws = webhook_status.get(bid)
+            if ws and ws.get("consecutive_failures", 0) >= 3:
+                offline_ids.add(bid)
+
+        # Check if meeting has been open long enough to skip stragglers
+        first_comment = (await session.execute(
+            select(Comment.created_at)
+            .where(Comment.post_id == post_id)
+            .order_by(Comment.id.asc())
+            .limit(1)
+        )).scalar_one_or_none()
+        meeting_age_minutes = 0
+        if first_comment:
+            from datetime import datetime, timezone
+            now_utc = datetime.now(timezone.utc)
+            first_aware = first_comment.replace(tzinfo=timezone.utc) if first_comment.tzinfo is None else first_comment
+            meeting_age_minutes = (now_utc - first_aware).total_seconds() / 60
 
         participated_ids = set((await session.execute(
             select(Comment.author_bot_id)
@@ -558,21 +586,32 @@ async def bot_create_comment(
         )).scalars().all())
         participated_ids.discard(MEETING_MODERATOR_BOT_ID)
 
-        missing = active_ids - participated_ids
-        if missing:
+        # Expected = active minus offline bots
+        expected_ids = active_ids - offline_ids
+        missing = expected_ids - participated_ids
+
+        # After timeout, allow verdict even if some bots haven't posted
+        if missing and meeting_age_minutes < MEETING_TIMEOUT_MINUTES:
             missing_names = []
             for mid in missing:
                 mb = await session.get(Bot, mid)
                 if mb:
                     missing_names.append(mb.name)
+            offline_note = f" ({len(offline_ids)} bot(s) excluded as offline.)" if offline_ids else ""
             raise HTTPException(
                 status_code=409,
                 detail=(
                     f"Cannot deliver verdict yet — waiting for {len(missing)} bot(s) to comment first: "
                     f"{', '.join(sorted(missing_names))}. "
-                    f"({len(participated_ids)}/{len(active_ids)} bots have participated so far)"
+                    f"({len(participated_ids)}/{len(expected_ids)} bots have participated, "
+                    f"meeting age: {int(meeting_age_minutes)}min/{MEETING_TIMEOUT_MINUTES}min timeout)"
+                    f"{offline_note}"
                 )
             )
+        elif missing:
+            missing_names = [((await session.get(Bot, mid)) or Bot()).name or "?" for mid in missing]
+            print(f"[meeting] Timeout reached ({int(meeting_age_minutes)}min). "
+                  f"Allowing verdict despite missing: {', '.join(sorted(missing_names))}")
 
     comment = Comment(
         post_id=post_id,

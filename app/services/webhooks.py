@@ -260,6 +260,9 @@ async def notify_bots_new_post(post: Post, session: AsyncSession):
     )
 
 
+MEETING_CHANNEL_ID = 46
+
+
 async def notify_bots_new_comment(comment: Comment, session: AsyncSession):
     """Notify all active bots (with webhook_url) about a new comment — includes discussion context."""
     from sqlalchemy import func as sa_func
@@ -298,6 +301,26 @@ async def notify_bots_new_comment(comment: Comment, session: AsyncSession):
             if u:
                 participants.add(u.display_name or u.email)
 
+    # For meeting rooms: only notify bots that haven't reached their comment limit
+    is_meeting = post and post.channel_id == MEETING_CHANNEL_ID
+    meeting_skip_bot_ids: set[int] = set()
+    if is_meeting:
+        from app.services.meeting import get_bot_meeting_limit
+        all_bots = (await session.execute(
+            select(Bot).where(Bot.active == True)
+        )).scalars().all()
+        for b in all_bots:
+            b_count = (await session.execute(
+                select(sa_func.count()).where(
+                    sa_func.and_(Comment.post_id == post.id, Comment.author_bot_id == b.id)
+                )
+            )).scalar() or 0
+            b_limit = await get_bot_meeting_limit(b.id, session)
+            if b_count >= b_limit:
+                meeting_skip_bot_ids.add(b.id)
+        if meeting_skip_bot_ids:
+            logger.info(f"[meeting] Skipping webhook for {len(meeting_skip_bot_ids)} bots at comment limit")
+
     payload = {
         "event": "new_comment",
         "comment": {
@@ -324,7 +347,10 @@ async def notify_bots_new_comment(comment: Comment, session: AsyncSession):
         ),
     }
 
-    await _broadcast_to_bots(payload, exclude_bot_id=comment.author_bot_id, session=session)
+    await _broadcast_to_bots(
+        payload, exclude_bot_id=comment.author_bot_id,
+        session=session, skip_bot_ids=meeting_skip_bot_ids,
+    )
 
     # Send targeted mention webhooks for @BotName in comment content
     await _send_mention_webhooks(
@@ -342,35 +368,38 @@ async def notify_bots_new_comment(comment: Comment, session: AsyncSession):
 MAX_BOT_COMMENTS_PER_POST = 20
 
 
-async def _broadcast_to_bots(payload: dict, exclude_bot_id: int | None, session: AsyncSession):
-    """Send webhook to all active bots with a webhook_url, except the author bot."""
+async def _broadcast_to_bots(payload: dict, exclude_bot_id: int | None,
+                            session: AsyncSession, skip_bot_ids: set[int] | None = None):
+    """Send webhook to all active bots with a webhook_url, except excluded/skipped bots."""
     from sqlalchemy import func as sa_func, and_
 
     bots = (await session.execute(
         select(Bot).where(Bot.active == True, Bot.webhook_url != "", Bot.webhook_url != None)
     )).scalars().all()
 
-    # Get post_id from payload to compute per-bot comment stats
+    # Get post_id and detect meeting context
     post_id = None
+    is_meeting = False
     if "post" in payload and payload["post"]:
         post_id = payload["post"].get("id")
+        is_meeting = payload["post"].get("channel_id") == MEETING_CHANNEL_ID
     elif "comment" in payload and payload["comment"]:
         post_id = payload["comment"].get("post_id")
 
     tasks = []
     for bot in bots:
         if bot.id == exclude_bot_id:
-            continue  # Don't notify the bot that created the content
+            continue
+        if skip_bot_ids and bot.id in skip_bot_ids:
+            continue
         if not bot.webhook_url:
             continue
 
-        # Get bot's token so it can authenticate back
         token_row = (await session.execute(
             select(ApiToken).where(ApiToken.bot_id == bot.id).limit(1)
         )).scalar_one_or_none()
         token = token_row.token_hash if token_row else None
 
-        # Get bot's total bonus and level
         from sqlalchemy import func as bonus_func
         from app.services.bonus import get_level, get_bot_rank
         bot_bonus = (await session.execute(
@@ -380,7 +409,6 @@ async def _broadcast_to_bots(payload: dict, exclude_bot_id: int | None, session:
         bot_level = get_level(bot_bonus)
         bot_rank = await get_bot_rank(bot.id, session)
 
-        # Include bot-specific info
         bot_payload = {
             **payload,
             "your_bot_id": bot.id,
@@ -393,7 +421,6 @@ async def _broadcast_to_bots(payload: dict, exclude_bot_id: int | None, session:
         if token:
             bot_payload["your_token"] = token
 
-        # Include per-bot comment budget for this post
         if post_id:
             bot_count = (await session.execute(
                 select(sa_func.count()).where(
@@ -411,28 +438,33 @@ async def _broadcast_to_bots(payload: dict, exclude_bot_id: int | None, session:
                 )
             )).scalar() or 0
 
-            remaining = max(0, MAX_BOT_COMMENTS_PER_POST - bot_count)
+            # Use dynamic limits for meetings
+            if is_meeting:
+                from app.services.meeting import get_bot_meeting_limit
+                max_c = await get_bot_meeting_limit(bot.id, session)
+            else:
+                max_c = MAX_BOT_COMMENTS_PER_POST
+
+            remaining = max(0, max_c - bot_count)
             bot_payload["your_status"] = {
                 "comments_made": bot_count,
-                "max_comments": MAX_BOT_COMMENTS_PER_POST,
+                "max_comments": max_c,
                 "remaining_comments": remaining,
                 "verdict_delivered": has_verdict > 0,
             }
 
-            # Override message if bot has exhausted their budget
             if has_verdict > 0:
                 bot_payload["your_status"]["note"] = "You already delivered your verdict. No further comments."
             elif remaining == 0:
-                bot_payload["your_status"]["note"] = "You have reached the comment limit. Your next comment must be a verdict."
-            elif remaining <= 3:
+                bot_payload["your_status"]["note"] = "You have reached the comment limit."
+            elif remaining <= 2:
                 bot_payload["your_status"]["note"] = (
-                    f"Only {remaining} comments left. Consider delivering your verdict soon."
+                    f"Only {remaining} comments left. Make them count!"
                 )
 
         tasks.append(_send_webhook(bot.webhook_url, bot_payload, token,
                                     bot_id=bot.id, bot_name=bot.name))
 
     if tasks:
-        # Fire all webhooks concurrently — background tasks with retry
         for t in tasks:
             asyncio.create_task(t)
