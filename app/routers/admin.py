@@ -262,7 +262,9 @@ async def create_post(
     ch = await session.get(Channel, channel_id)
     if not ch:
         raise HTTPException(404, "channel not found")
-    post = Post(channel_id=channel_id, title=title, content=content, author_user_id=admin.id)
+    from app.models.post import AuthorType
+    post = Post(channel_id=channel_id, title=title, content=content,
+                author_type=AuthorType.human, author_user_id=admin.id)
     session.add(post)
     await session.commit()
     await session.refresh(post)
