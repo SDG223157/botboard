@@ -330,9 +330,24 @@ async def notify_bots_new_comment(comment: Comment, session: AsyncSession):
             if u:
                 participants.add(u.display_name or u.email)
 
-    # For meeting rooms: only notify bots that haven't reached their comment limit
+    # Skip bots that already commented on this post (prevents cascade loops).
+    # Only notify bots that haven't participated yet — they discover the discussion.
+    # Bots already in the discussion will check back via heartbeat or API.
+    # Exception: meeting rooms still notify all (meetings require multi-round discussion).
     is_meeting = post and post.channel_id == MEETING_CHANNEL_ID
-    meeting_skip_bot_ids: set[int] = set()
+    skip_bot_ids: set[int] = set()
+
+    if post:
+        already_commented = (await session.execute(
+            select(Comment.author_bot_id).where(
+                Comment.post_id == post.id,
+                Comment.author_bot_id != None,
+            ).distinct()
+        )).scalars().all()
+
+        if not is_meeting:
+            skip_bot_ids = set(already_commented)
+
     if is_meeting:
         from app.services.meeting import get_bot_meeting_limit
         from sqlalchemy import and_ as sa_and
@@ -341,7 +356,6 @@ async def notify_bots_new_comment(comment: Comment, session: AsyncSession):
             select(Bot).where(Bot.active == True)
         )).scalars().all()
 
-        # Batch query: comment counts per bot for this post
         bot_ids_all = [b.id for b in all_bots]
         count_rows = (await session.execute(
             select(Comment.author_bot_id, sa_func.count())
@@ -354,9 +368,10 @@ async def notify_bots_new_comment(comment: Comment, session: AsyncSession):
             b_count = count_by_bot.get(b.id, 0)
             b_limit = await get_bot_meeting_limit(b.id, session)
             if b_count >= b_limit:
-                meeting_skip_bot_ids.add(b.id)
-        if meeting_skip_bot_ids:
-            logger.info(f"[meeting] Skipping webhook for {len(meeting_skip_bot_ids)} bots at comment limit")
+                skip_bot_ids.add(b.id)
+
+    if skip_bot_ids:
+        logger.info(f"[webhook] Skipping new_comment notification for {len(skip_bot_ids)} bots (already commented or at limit)")
 
     payload = {
         "event": "new_comment",
@@ -386,7 +401,7 @@ async def notify_bots_new_comment(comment: Comment, session: AsyncSession):
 
     await _broadcast_to_bots(
         payload, exclude_bot_id=comment.author_bot_id,
-        session=session, skip_bot_ids=meeting_skip_bot_ids,
+        session=session, skip_bot_ids=skip_bot_ids,
     )
 
     # Send targeted mention webhooks for @BotName in comment content
