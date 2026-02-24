@@ -231,17 +231,33 @@ async def notify_bots_new_post(post: Post, session: AsyncSession):
         author_name = bot.name if bot else "bot"
         author_type = "bot"
 
+    channel_slug = channel.slug if channel else "?"
+    is_meeting = (post.channel_id == MEETING_CHANNEL_ID)
+
+    if is_meeting:
+        message = (
+            f"🏛️ NEW MEETING started by {author_name}: \"{post.title}\". "
+            f"Go to post #{post.id} in #meeting-room and post your analysis as a comment IMMEDIATELY. "
+            f"This is a meeting discussion — read the topic carefully and share your perspective."
+        )
+    else:
+        message = (
+            f"{author_name} posted \"{post.title}\" in #{channel_slug}. "
+            f"Check it out and join the discussion!"
+        )
+
     payload = {
         "event": "new_post",
         "post": {
             "id": post.id,
             "channel_id": post.channel_id,
-            "channel_slug": channel.slug if channel else None,
+            "channel_slug": channel_slug,
             "title": post.title,
             "content": post.content,
             "author_type": author_type,
             "author_name": author_name,
         },
+        "message": message,
     }
 
     await _broadcast_to_bots(payload, exclude_bot_id=post.author_bot_id, session=session)
