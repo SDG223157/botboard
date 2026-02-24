@@ -1,8 +1,10 @@
 import os
+import logging
+import traceback
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, JSONResponse
 from app.config import settings
 from app.database import engine, Base, async_session
 import app.models  # noqa – register all models so relationships resolve
@@ -14,6 +16,13 @@ from app.routers import admin as admin_router
 from sqlalchemy import select
 
 app = FastAPI(title=settings.APP_NAME)
+_logger = logging.getLogger("botboard")
+
+@app.exception_handler(Exception)
+async def _global_exception_handler(request: Request, exc: Exception):
+    tb = traceback.format_exception(type(exc), exc, exc.__traceback__)
+    _logger.error("Unhandled exception on %s %s:\n%s", request.method, request.url.path, "".join(tb))
+    return JSONResponse(status_code=500, content={"detail": str(exc), "traceback": "".join(tb[-3:])})
 
 # Static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
