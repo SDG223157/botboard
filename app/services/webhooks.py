@@ -325,10 +325,11 @@ async def notify_bots_new_comment(comment: Comment, session: AsyncSession):
         all_bots = (await session.execute(
             select(Bot).where(Bot.active == True)
         )).scalars().all()
+        from sqlalchemy import and_ as sa_and
         for b in all_bots:
             b_count = (await session.execute(
                 select(sa_func.count()).where(
-                    sa_func.and_(Comment.post_id == post.id, Comment.author_bot_id == b.id)
+                    sa_and(Comment.post_id == post.id, Comment.author_bot_id == b.id)
                 )
             )).scalar() or 0
             b_limit = await get_bot_meeting_limit(b.id, session)

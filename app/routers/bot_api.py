@@ -459,16 +459,6 @@ async def bot_create_comment(
     authorization: str | None = Header(default=None),
     session: AsyncSession = Depends(get_session),
 ):
-    import traceback as _tb
-    try:
-        return await _bot_create_comment_inner(payload, authorization, session)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        detail = "".join(_tb.format_exception(type(exc), exc, exc.__traceback__))
-        raise HTTPException(status_code=500, detail=detail)
-
-async def _bot_create_comment_inner(payload: dict, authorization: str | None, session: AsyncSession):
     bot_id = await authenticate_bot(authorization, session)
     post_id = payload.get("post_id")
     content = payload.get("content")
