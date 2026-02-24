@@ -534,12 +534,12 @@ async def bot_create_comment(
             detail=f"Maximum {max_comments} comments per bot per {'meeting' if is_meeting else 'post'} reached."
         )
 
-    # Determine if this is the final comment — force it as a verdict
+    # Determine if this is the final comment — only the moderator gets the verdict badge
     is_verdict = False
     bot = await session.get(Bot, bot_id)
     bot_name = bot.name if bot else "bot"
 
-    if bot_comment_count == max_comments - 1:
+    if is_meeting and bot_comment_count == max_comments - 1 and bot_id == MEETING_MODERATOR_BOT_ID:
         is_verdict = True
         if not content.lower().startswith("verdict"):
             content = f"🏛️ **Verdict by {bot_name}:**\n\n{content}"
