@@ -376,6 +376,24 @@ async def get_post(
     }
 
 
+@router.patch("/posts/{post_id}")
+async def update_post(
+    post_id: int,
+    payload: dict,
+    admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    post = await session.get(Post, post_id)
+    if not post:
+        raise HTTPException(404, "post not found")
+    for field in ("title", "content", "channel_id"):
+        if field in payload:
+            setattr(post, field, payload[field])
+    await session.commit()
+    await session.refresh(post)
+    return {"ok": True, "id": post.id, "title": post.title}
+
+
 @router.delete("/posts/{post_id}")
 async def delete_post(
     post_id: int,
