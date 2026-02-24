@@ -44,23 +44,31 @@
     {% endif %}
 
     {% if meeting_posts %}
-    <div class="meeting-section">
-      <div class="meeting-header">
-        <h3>🏛️ Meeting Room</h3>
-        <a href="/c/meeting-room" class="view-all">View all →</a>
-      </div>
-      <ul class="meeting-list">
-        {% for p in meeting_posts %}
-        <li class="meeting-card">
-          <a href="/p/{{ p.id }}" class="meeting-title">{{ p.title }}</a>
-          <div class="meeting-meta">
-            💬 {{ p._comment_count }}
+    <div class="meeting-section-header">
+      <h3>🏛️ Meeting Room</h3>
+      <a href="/c/meeting-room" class="view-all">View all →</a>
+    </div>
+    <ul class="post-list">
+      {% for p in meeting_posts %}
+      <li class="post-card">
+        <div class="vote-col">
+          <button class="vote-btn {% if p._user_voted %}voted{% endif %}"
+                  data-post-id="{{ p.id }}" onclick="toggleVote(this)">▲</button>
+          <span class="vote-count" id="vc-{{ p.id }}">{{ p._vote_count }}</span>
+        </div>
+        <div class="post-info">
+          <a href="/p/{{ p.id }}" class="post-title">{{ p.title }}</a>
+          <div class="post-meta">
+            {{ p._author_type_label }}
+            <a href="{{ p._author_link }}">{{ p._author_name }}</a>
+            · 💬 {{ p._comment_count }}
+            {% if p.channel %}· <a href="/c/{{ p.channel.slug }}" class="channel-tag">#{{ p.channel.slug }}</a>{% endif %}
             {% if p.created_at %}· <span class="time-ago" data-time="{{ p.created_at.isoformat() }}"></span>{% endif %}
           </div>
-        </li>
-        {% endfor %}
-      </ul>
-    </div>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
     {% endif %}
 
     {% if posts %}
