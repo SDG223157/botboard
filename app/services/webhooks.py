@@ -19,6 +19,17 @@ logger = logging.getLogger(__name__)
 # Pattern to match @BotName mentions (word boundary, case-insensitive)
 _MENTION_RE = re.compile(r'@(\w+)', re.IGNORECASE)
 
+CONTENT_PREVIEW_LEN = 300
+
+
+def _truncate(text: str | None, max_len: int = CONTENT_PREVIEW_LEN) -> str:
+    """Truncate text for webhook payloads to reduce downstream token usage."""
+    if not text:
+        return ""
+    if len(text) <= max_len:
+        return text
+    return text[:max_len] + "..."
+
 # In-memory webhook delivery status tracking (per bot_id)
 # Structure: { bot_id: { "bot_name": str, "webhook_url": str, "last_attempt": float,
 #   "last_status": int|None, "last_error": str|None, "last_success": float|None,
@@ -207,7 +218,7 @@ async def _send_mention_webhooks(
             payload["comment"] = {
                 "id": comment.id,
                 "post_id": comment.post_id,
-                "content": comment.content,
+                "content_preview": _truncate(comment.content),
             }
         if token:
             payload["your_token"] = token
@@ -254,11 +265,12 @@ async def notify_bots_new_post(post: Post, session: AsyncSession):
             "channel_id": post.channel_id,
             "channel_slug": channel_slug,
             "title": post.title,
-            "content": post.content,
+            "content_preview": _truncate(post.content),
             "author_type": author_type,
             "author_name": author_name,
         },
         "message": message,
+        "hint": "Use GET /api/bot/posts/{id} to read full content before commenting.",
     }
 
     await _broadcast_to_bots(payload, exclude_bot_id=post.author_bot_id, session=session)
@@ -351,7 +363,7 @@ async def notify_bots_new_comment(comment: Comment, session: AsyncSession):
         "comment": {
             "id": comment.id,
             "post_id": comment.post_id,
-            "content": comment.content,
+            "content_preview": _truncate(comment.content),
             "author_type": author_type,
             "author_name": author_name,
         },
@@ -360,7 +372,6 @@ async def notify_bots_new_comment(comment: Comment, session: AsyncSession):
             "channel_id": post.channel_id,
             "channel_slug": channel.slug if channel else None,
             "title": post.title,
-            "content": post.content,
         } if post else None,
         "discussion": {
             "total_comments": comment_count,
@@ -368,8 +379,9 @@ async def notify_bots_new_comment(comment: Comment, session: AsyncSession):
         },
         "message": (
             f"{author_name} commented on \"{post.title}\" in #{channel.slug if channel else '?'}. "
-            f"{comment_count} comments so far. Join the discussion and share your perspective!"
+            f"{comment_count} comments so far."
         ),
+        "hint": "Use GET /api/bot/posts/{id} and /comments to read full context before replying.",
     }
 
     await _broadcast_to_bots(
@@ -502,16 +514,16 @@ async def _broadcast_to_bots(payload: dict, exclude_bot_id: int | None,
             max_c = meeting_limit_map.get(bot.id, MAX_BOT_COMMENTS_PER_POST) if is_meeting else MAX_BOT_COMMENTS_PER_POST
             remaining = max(0, max_c - bot_count)
 
+            if has_verdict:
+                continue
+
             bot_payload["your_status"] = {
                 "comments_made": bot_count,
                 "max_comments": max_c,
                 "remaining_comments": remaining,
-                "verdict_delivered": has_verdict,
             }
 
-            if has_verdict:
-                bot_payload["your_status"]["note"] = "You already delivered your verdict. No further comments."
-            elif remaining == 0:
+            if remaining == 0:
                 bot_payload["your_status"]["note"] = "You have reached the comment limit."
             elif remaining <= 2:
                 bot_payload["your_status"]["note"] = (
