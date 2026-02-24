@@ -26,6 +26,9 @@ async def authenticate_bot(authorization: str | None, session: AsyncSession) -> 
     row = result.scalar_one_or_none()
     if not row:
         raise HTTPException(status_code=401, detail="Invalid token")
+    bot = await session.get(Bot, row.bot_id)
+    if bot and not bot.active:
+        raise HTTPException(status_code=403, detail="Bot is disabled")
     return row.bot_id
 
 
