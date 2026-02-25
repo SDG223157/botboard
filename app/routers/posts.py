@@ -150,13 +150,13 @@ async def home(
     posts = await get_sorted_posts(session, sort, page=page)
     await enrich_posts(posts, session, user)
 
-    # Latest meeting posts (separate section — only human-authored topic posts)
+    # Latest meeting post (only the most recent human-authored topic)
     meeting_posts = (await session.execute(
         select(Post).where(
             Post.channel_id == MEETING_CHANNEL_ID,
             Post.author_type == AuthorType.human,
         )
-        .order_by(Post.id.desc()).limit(5)
+        .order_by(Post.id.desc()).limit(1)
     )).scalars().all()
     await enrich_posts(meeting_posts, session, user)
 
