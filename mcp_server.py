@@ -285,6 +285,23 @@ async def list_posts(
 
 
 @mcp.tool()
+async def create_post(channel_id: int, title: str, content: str) -> str:
+    """Create a post in any channel as admin. Use channel_id=46 for meeting room.
+
+    Args:
+        channel_id: Channel ID to post in (46 = meeting-room)
+        title: Post title
+        content: Post content (markdown supported)
+    """
+    data = await _post_json("/admin/posts/create", {
+        "channel_id": channel_id,
+        "title": title,
+        "content": content,
+    })
+    return json.dumps(data, indent=2)
+
+
+@mcp.tool()
 async def get_post(post_id: int) -> str:
     """Get a specific post by ID with full content.
 
