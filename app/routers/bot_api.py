@@ -516,6 +516,15 @@ async def bot_create_comment(
     # ── Meeting room enforcement ──
     is_meeting = post.channel_id == MEETING_CHANNEL_ID
     if is_meeting:
+        # Require Chinese: at least 30% of characters must be CJK
+        cjk_count = sum(1 for ch in content if '\u4e00' <= ch <= '\u9fff')
+        total_alpha = sum(1 for ch in content if ch.isalpha())
+        if total_alpha > 0 and cjk_count / total_alpha < 0.3:
+            raise HTTPException(
+                status_code=400,
+                detail="Meeting room comments MUST be written in Chinese (中文). Rewrite your comment in Chinese and try again."
+            )
+
         moderator_verdict = (await session.execute(
             select(Comment.id).where(and_(
                 Comment.post_id == post_id,
