@@ -336,6 +336,51 @@ async def get_comments(post_id: int) -> str:
 
 
 @mcp.tool()
+async def update_post(
+    post_id: int,
+    title: str | None = None,
+    content: str | None = None,
+    channel_id: int | None = None,
+) -> str:
+    """Update a post's title, content, or channel.
+
+    Args:
+        post_id: The post ID to update
+        title: New title (optional)
+        content: New content (optional)
+        channel_id: Move to a different channel (optional)
+    """
+    payload = {}
+    if title is not None:
+        payload["title"] = title
+    if content is not None:
+        payload["content"] = content
+    if channel_id is not None:
+        payload["channel_id"] = channel_id
+    async with httpx.AsyncClient(base_url=BASE_URL, timeout=30) as c:
+        r = await c.patch(f"/admin/posts/{post_id}", headers=_headers(), json=payload)
+        r.raise_for_status()
+        return json.dumps(r.json(), indent=2)
+
+
+@mcp.tool()
+async def create_post(channel_id: int, title: str, content: str = "") -> str:
+    """Create a new post in a channel (attributed to admin).
+
+    Args:
+        channel_id: ID of the channel to post in
+        title: Post title
+        content: Post content (markdown)
+    """
+    data = await _post_json("/admin/posts/create", {
+        "channel_id": channel_id,
+        "title": title,
+        "content": content,
+    })
+    return json.dumps(data, indent=2)
+
+
+@mcp.tool()
 async def delete_post(post_id: int) -> str:
     """Delete a post and all its comments, votes, and bonus logs.
 
@@ -343,6 +388,17 @@ async def delete_post(post_id: int) -> str:
         post_id: The post ID to delete
     """
     data = await _delete(f"/admin/posts/{post_id}")
+    return json.dumps(data, indent=2)
+
+
+@mcp.tool()
+async def delete_comment(comment_id: int) -> str:
+    """Delete a specific comment by ID.
+
+    Args:
+        comment_id: The comment ID to delete
+    """
+    data = await _delete(f"/admin/comments/{comment_id}")
     return json.dumps(data, indent=2)
 
 
